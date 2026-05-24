@@ -2,7 +2,7 @@ import pytest
 from kortex.spine.planner import KortexPlanner
 from kortex.config.bootstrapper import DomainBootstrapper
 from kortex.spine.orchestrator import Orchestrator
-from tests.test_e2e_bootstrapper import YAML_DOMAIN
+from tests.test_e2e_bootstrapper import YAML_DOMAIN, e2e_registry
 from unified_planning.shortcuts import Fluent, Object
 
 def test_async_multi_goal_orchestration(tmp_path):
@@ -10,7 +10,7 @@ def test_async_multi_goal_orchestration(tmp_path):
     domain_file.write_text(YAML_DOMAIN)
     
     planner = KortexPlanner("test_spine")
-    bootstrapper = DomainBootstrapper(planner)
+    bootstrapper = DomainBootstrapper(planner, registry=e2e_registry)
     bootstrapper.load_domain(str(domain_file))
     
     # We have two robots and two vaults to prove concurrent execution

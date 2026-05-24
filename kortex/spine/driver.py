@@ -1,6 +1,6 @@
 from typing import Any, Callable, List
 from unified_planning.plans import Plan
-from kortex.plugins.registry import registry
+from kortex.plugins.registry import PluginRegistry, registry as default_registry
 
 TraceCallback = Callable[[str, str, dict[str, Any]], None]
 
@@ -10,10 +10,16 @@ class ExecutionDriver:
     Enforces Human-In-The-Loop (HITL) authorization for sensitive operations.
     """
 
-    def __init__(self, interactive: bool = True, trace_callback: TraceCallback | None = None):
+    def __init__(
+        self,
+        interactive: bool = True,
+        trace_callback: TraceCallback | None = None,
+        registry: PluginRegistry | None = None,
+    ):
         """Initialize the execution driver."""
         self.interactive = interactive
         self.trace_callback = trace_callback
+        self.registry = registry or default_registry
 
     def _trace(self, stage: str, message: str, payload: dict[str, Any] | None = None) -> None:
         """Emit an execution trace event when a callback is configured."""
@@ -85,7 +91,7 @@ class ExecutionDriver:
             )
             
             try:
-                plugin_meta = registry.get_plugin(name)
+                plugin_meta = self.registry.get_plugin(name)
                 
                 # Check HITL Security Authorization
                 if plugin_meta.get("requires_approval", False):
@@ -93,7 +99,7 @@ class ExecutionDriver:
                     if not approved:
                         raise PermissionError(f"Human denied execution of '{name}'.")
                         
-                res = registry.execute_plugin(name, **kwargs)
+                res = self.registry.execute_plugin(name, **kwargs)
                 results.append(res)
                 print(f"[Driver] Action '{name}' succeeded -> {res}")
                 self._trace(

@@ -6,29 +6,31 @@ from unittest.mock import MagicMock, patch
 from kortex.spine.planner import KortexPlanner
 from kortex.config.bootstrapper import DomainBootstrapper
 from kortex.spine.driver import ExecutionDriver
-from kortex.plugins.registry import registry
+from kortex.plugins.registry import PluginRegistry
 from kortex.sandbox.chunker import IntraDomainLearner
 from kortex.sandbox.novelty import NoveltyBranch
 from kortex.memory.reflector import SleepReflector, SynthesizedMetaTask
 
+scenario_registry = PluginRegistry()
+
 # === SCENARIO PLUGINS (PHYSICAL DRIVERS) ===
-@registry.register_action("move")
+@scenario_registry.register_action("move")
 def move(frm: str, to: str) -> str:
     return f"Moved from {frm} to {to}"
 
-@registry.register_action("unlock")
+@scenario_registry.register_action("unlock")
 def unlock(loc: str) -> str:
     return f"Unlocked {loc}"
 
-@registry.register_action("wipe_server", requires_approval=True)
+@scenario_registry.register_action("wipe_server", requires_approval=True)
 def wipe_server(srv: str) -> str:
     return f"WIPED DATA ON {srv}"
 
-@registry.register_action("check_disk_space")
+@scenario_registry.register_action("check_disk_space")
 def check_disk_space(srv: str) -> str:
     return f"Checked disk space on {srv}"
 
-@registry.register_action("clear_cache")
+@scenario_registry.register_action("clear_cache")
 def clear_cache(srv: str) -> str:
     return f"Cleared cache on {srv}"
 
@@ -112,7 +114,7 @@ def base_domain(tmp_path):
 
 def setup_planner(domain_path, objects, initial_state):
     planner = KortexPlanner("test_spine")
-    bootstrapper = DomainBootstrapper(planner)
+    bootstrapper = DomainBootstrapper(planner, registry=scenario_registry)
     bootstrapper.load_domain(str(domain_path))
     bootstrapper.load_problem_state(objects, initial_state)
     return planner, bootstrapper
@@ -134,7 +136,7 @@ def test_scenario_1_perfect_htn(base_domain):
     plan = planner.execute_plan()
     assert plan is not None
     
-    driver = ExecutionDriver(interactive=False)
+    driver = ExecutionDriver(interactive=False, registry=scenario_registry)
     results = driver.execute_plan(plan)
     
     # It just executed the pre-compiled ['move'] task
@@ -167,7 +169,7 @@ def test_scenario_2_vague_gap(base_domain):
     assert "move" in action_names
     assert "unlock" in action_names
     
-    driver = ExecutionDriver(interactive=False)
+    driver = ExecutionDriver(interactive=False, registry=scenario_registry)
     results = driver.execute_plan(plan)
     assert len(results) == 2
 
@@ -219,7 +221,7 @@ def test_scenario_4_hitl_approval(base_domain):
     assert plan is not None
     
     # Execution Driver MUST halt and ask for approval
-    driver = ExecutionDriver(interactive=True)
+    driver = ExecutionDriver(interactive=True, registry=scenario_registry)
     
     # Simulate human typing 'n' (Deny)
     with patch('builtins.input', return_value='n'):
@@ -255,7 +257,7 @@ def test_scenario_5_total_impasse_routes_to_novelty(base_domain):
     resolved = novelty.resolve_impasse(
         failed_goal=failed_goal,
         current_state={},
-        available_actions=registry.list_plugins(),
+        available_actions=scenario_registry.list_plugins(),
     )
 
     assert resolved is True
@@ -304,7 +306,7 @@ def test_scenario_6_sleep_reflection_creates_executable_meta_task(base_domain):
         "clear_cache",
     ]
 
-    driver = ExecutionDriver(interactive=False)
+    driver = ExecutionDriver(interactive=False, registry=scenario_registry)
     results = driver.execute_plan(plan)
 
     assert results == [

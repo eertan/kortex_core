@@ -5,7 +5,7 @@ from unified_planning.shortcuts import (
 )
 from unified_planning.model.htn import Task, Method
 from kortex.config.validation import DomainManifestValidator
-from kortex.plugins.registry import registry
+from kortex.plugins.registry import PluginRegistry, registry as default_registry
 from kortex.spine.planner import KortexPlanner
 
 class DomainBootstrapper:
@@ -14,8 +14,10 @@ class DomainBootstrapper:
     This fulfills Phase 3 (Zero-Config Bootstrapper).
     """
 
-    def __init__(self, planner: KortexPlanner):
+    def __init__(self, planner: KortexPlanner, registry: PluginRegistry | None = None):
+        """Initialize the bootstrapper with a planner and plugin registry."""
         self.planner = planner
+        self.registry = registry or default_registry
         self.types: dict[str, UserType] = {}
         self.fluents: dict[str, Fluent] = {}
         self.objects: dict[str, Object] = {}
@@ -27,7 +29,7 @@ class DomainBootstrapper:
 
         validator = DomainManifestValidator()
         validator.validate(data)
-        validator.validate_plugin_bindings(data, registry)
+        validator.validate_plugin_bindings(data, self.registry)
 
         # 1. Parse Types
         for t_name in data.get('types', []):

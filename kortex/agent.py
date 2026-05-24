@@ -15,6 +15,7 @@ from unified_planning.plans import Plan
 from kortex.config.bootstrapper import DomainBootstrapper
 from kortex.extractor.models import ClarificationRequired, HTNLaunchPad, IntentExtraction
 from kortex.memory.manager import MemoryManager
+from kortex.plugins.registry import PluginRegistry, registry as default_registry
 from kortex.spine.driver import ExecutionDriver
 from kortex.spine.planner import KortexPlanner
 from kortex.tracing import TraceEvent, TraceRecorder
@@ -73,10 +74,12 @@ class KortexAgent:
         hydrator: StateHydrationProvider | None = None,
         memory_manager: MemoryManager | None = None,
         trace_recorder: TraceRecorder | None = None,
+        registry: PluginRegistry | None = None,
     ) -> None:
         """Initialize the agent with replaceable production or test dependencies."""
         self.extractor = extractor
-        self.driver = driver or ExecutionDriver()
+        self.registry = registry or default_registry
+        self.driver = driver or ExecutionDriver(registry=self.registry)
         self.hydrator = hydrator
         self.memory_manager = memory_manager
         self.trace_recorder = trace_recorder or TraceRecorder()
@@ -122,7 +125,7 @@ class KortexAgent:
             )
 
         planner = KortexPlanner("kortex_agent_run")
-        bootstrapper = DomainBootstrapper(planner)
+        bootstrapper = DomainBootstrapper(planner, registry=self.registry)
         bootstrapper.load_domain(context.domain_path)
         bootstrapper.load_problem_state(context.objects, initial_state)
         self._trace(

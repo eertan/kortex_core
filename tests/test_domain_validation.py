@@ -2,7 +2,7 @@ import pytest
 
 from kortex.config.bootstrapper import DomainBootstrapper
 from kortex.config.validation import DomainManifestError
-from kortex.plugins.registry import registry
+from kortex.plugins.registry import PluginRegistry
 from kortex.spine.planner import KortexPlanner
 
 
@@ -52,7 +52,9 @@ htn_methods:
 
 
 def test_bootstrapper_rejects_registered_plugin_signature_mismatch(tmp_path):
-    @registry.register_action("validation_signature_action")
+    local_registry = PluginRegistry()
+
+    @local_registry.register_action("validation_signature_action")
     def validation_signature_action(unexpected: str) -> str:
         """Plugin intentionally missing the manifest-declared parameter."""
         return unexpected
@@ -71,7 +73,10 @@ actions:
     effects: []
 """
     )
-    bootstrapper = DomainBootstrapper(KortexPlanner("invalid_domain"))
+    bootstrapper = DomainBootstrapper(
+        KortexPlanner("invalid_domain"),
+        registry=local_registry,
+    )
 
     with pytest.raises(DomainManifestError) as exc:
         bootstrapper.load_domain(str(domain_file))

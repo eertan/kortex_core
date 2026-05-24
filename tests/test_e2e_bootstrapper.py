@@ -4,7 +4,9 @@ import pytest
 from kortex.spine.planner import KortexPlanner
 from kortex.config.bootstrapper import DomainBootstrapper
 from kortex.spine.driver import ExecutionDriver
-from kortex.plugins.registry import registry
+from kortex.plugins.registry import PluginRegistry
+
+e2e_registry = PluginRegistry()
 
 # Mock YAML Domain
 YAML_DOMAIN = """
@@ -43,11 +45,11 @@ actions:
 """
 
 # Define actual python executions matching the actions
-@registry.register_action("move")
+@e2e_registry.register_action("move")
 def move_plugin(frm: str, to: str) -> str:
     return f"Robot drove from {frm} to {to}"
 
-@registry.register_action("unlock")
+@e2e_registry.register_action("unlock")
 def unlock_plugin(loc: str) -> str:
     return f"Robot used badge to unlock {loc}"
 
@@ -59,7 +61,7 @@ def test_end_to_end_yaml_to_execution(tmp_path):
     
     # 2. Bootstrapper Phase
     planner = KortexPlanner("test_spine")
-    bootstrapper = DomainBootstrapper(planner)
+    bootstrapper = DomainBootstrapper(planner, registry=e2e_registry)
     bootstrapper.load_domain(str(domain_file))
     
     # Check parsed data
@@ -94,7 +96,7 @@ def test_end_to_end_yaml_to_execution(tmp_path):
     assert "unlock" in action_names
     
     # 6. Physical Execution Phase
-    driver = ExecutionDriver()
+    driver = ExecutionDriver(registry=e2e_registry)
     results = driver.execute_plan(plan)
     
     # Verify the python functions actually ran

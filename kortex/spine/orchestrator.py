@@ -2,7 +2,6 @@ import concurrent.futures
 from typing import Dict, Any, List
 from kortex.spine.planner import KortexPlanner
 from kortex.spine.driver import ExecutionDriver
-from unified_planning.shortcuts import ProblemKind
 
 class Orchestrator:
     """
@@ -11,9 +10,10 @@ class Orchestrator:
     and executes them concurrently if possible.
     """
     
-    def __init__(self, bootstrapper):
+    def __init__(self, bootstrapper, driver: ExecutionDriver | None = None):
+        """Initialize the orchestrator with shared bootstrapper and driver."""
         self.bootstrapper = bootstrapper
-        self.driver = ExecutionDriver()
+        self.driver = driver or ExecutionDriver(registry=bootstrapper.registry)
 
     def _are_goals_independent(self, goal_list: List[Dict[str, Any]]) -> bool:
         """

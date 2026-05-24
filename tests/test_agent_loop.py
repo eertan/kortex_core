@@ -4,9 +4,10 @@ import pytest
 
 from kortex.agent import AgentDomainContext, KortexAgent
 from kortex.extractor.models import ClarificationRequired, HTNLaunchPad, IntentExtraction
-from kortex.plugins.registry import registry
+from kortex.plugins.registry import PluginRegistry
 from kortex.spine.driver import ExecutionDriver
 
+agent_loop_registry = PluginRegistry()
 
 AGENT_DOMAIN = """
 domain_name: "agent_loop_domain"
@@ -30,7 +31,7 @@ actions:
 """
 
 
-@registry.register_action("agent_move")
+@agent_loop_registry.register_action("agent_move")
 def agent_move(frm: str, to: str) -> str:
     """Test plugin for agent-loop planning and execution."""
     return f"agent moved from {frm} to {to}"
@@ -93,7 +94,8 @@ async def test_agent_loop_pauses_for_clarification(tmp_path):
 
     agent = KortexAgent(
         extractor=FakeExtractor(clarification),
-        driver=ExecutionDriver(interactive=False),
+        driver=ExecutionDriver(interactive=False, registry=agent_loop_registry),
+        registry=agent_loop_registry,
     )
     context = AgentDomainContext(
         domain_path=str(domain_file),
@@ -128,7 +130,8 @@ async def test_agent_loop_hydrates_plans_executes_traces_and_writes_memory(tmp_p
         extractor=extractor,
         hydrator=hydrator,
         memory_manager=memory_manager,
-        driver=ExecutionDriver(interactive=False),
+        driver=ExecutionDriver(interactive=False, registry=agent_loop_registry),
+        registry=agent_loop_registry,
     )
     context = AgentDomainContext(
         domain_path=str(domain_file),
