@@ -67,16 +67,16 @@ Based on the detailed architectural discussion, here is the structured implement
 
 ## Phase 8: Human-in-the-Loop (HITL) & Full Agent Tracing
 **Goal:** Ensure the system can be audited, safely interrupted, and can ask for clarification when faced with ambiguity.
-- [ ] **Full Tracing:** Implement a structured tracing logger that records the entire lifecycle (NL Intent -> PDDL State -> Planner Search -> Physical Execution).
-- [ ] **Security Authorization:** Add an authorization layer in the `ExecutionDriver`. High-risk primitive actions must pause execution and request human approval.
-- [ ] **Cognitive Clarification (HITL):** 
+- [x] **Full Tracing:** Implement a structured tracing logger that records the entire lifecycle (NL Intent -> PDDL State -> Planner Search -> Physical Execution).
+- [x] **Security Authorization:** Add an authorization layer in the `ExecutionDriver`. High-risk primitive actions must pause execution and request human approval.
+- [x] **Cognitive Clarification (HITL):** 
   - *Pre-Planning:* Update the Extractor so if an intent is missing mandatory schema parameters (e.g., target entity for a churn model is ambiguous), it returns a `ClarificationRequired` payload instead of guessing.
   - *Mid-Execution:* Give primitive actions and subagents a standard way to yield to the user (`ask_human`) if they discover ambiguity in the data while running.
 
 ## Phase 9: Memory Integration & Sleep-Phase Metacognition
 **Goal:** Implement the "Synergy" reflection loop and active RAG.
-- [ ] **Episodic Context Injection:** Modify the Extractor and Bootstrapper so they actively query the Graphiti/Kùzu memory for past context *before* planning (resolving vague entities using past knowledge).
-- [ ] **Meta-Task Reflection (Sleep Phase):** Implement the asynchronous sleep-phase LLM routine that scans multiple distinct episodic traces in Graphiti, finds common structural intersections, and synthesizes abstract "Meta-Tasks" (HTN Grammar Learning).
+- [x] **Episodic Context Injection:** Modify the Extractor and Bootstrapper so they actively query the Graphiti/Kùzu memory for past context *before* planning (resolving vague entities using past knowledge).
+- [x] **Meta-Task Reflection (Sleep Phase):** Implement the asynchronous sleep-phase LLM routine that scans multiple distinct episodic traces in Graphiti, finds common structural intersections, and synthesizes abstract "Meta-Tasks" (HTN Grammar Learning).
 
 ## Phase 10: End-to-End Complex Scenarios
 **Goal:** Prove the architecture works holistically with concrete scenarios.

@@ -5,9 +5,22 @@ These models define the structured schema expected from the LLM extraction layer
 acting as a bridge between intent extraction and the deterministic HTN execution engine.
 """
 
-from typing import Any
+from typing import Any, Union
 from pydantic import BaseModel, Field
 
+class ClarificationRequired(BaseModel):
+    """
+    Schema used when the natural language intent is ambiguous or missing
+    mandatory parameters required by the HTN domain manifest.
+    """
+    question: str = Field(
+        ...,
+        description="The specific question to ask the user to resolve the ambiguity."
+    )
+    reason: str = Field(
+        ...,
+        description="The internal reasoning for why clarification is needed (e.g., 'Target entity type unknown: household vs individual')."
+    )
 
 class HTNLaunchPad(BaseModel):
     """
@@ -24,3 +37,5 @@ class HTNLaunchPad(BaseModel):
         default_factory=dict,
         description="Parameters extracted from the prompt necessary to execute the task."
     )
+
+IntentExtraction = Union[HTNLaunchPad, ClarificationRequired]

@@ -9,7 +9,7 @@ class PluginRegistry:
     def __init__(self):
         self.plugins: Dict[str, Dict[str, Any]] = {}
         
-    def register_action(self, name: str, preconditions: Dict[str, Any] = None, effects: Dict[str, Any] = None):
+    def register_action(self, name: str, preconditions: Dict[str, Any] = None, effects: Dict[str, Any] = None, requires_approval: bool = False):
         """
         Decorator to register a Python function as a UPF primitive action.
         
@@ -17,6 +17,8 @@ class PluginRegistry:
             name: The name of the primitive action matching the HTN spec.
             preconditions: A dictionary of state variables and expected values.
             effects: A dictionary of state variables mutated by this action.
+            requires_approval: If True, the ExecutionDriver must get Human-In-The-Loop 
+                               authorization before executing this physical action.
         """
         def decorator(func: Callable):
             sig = inspect.signature(func)
@@ -26,7 +28,8 @@ class PluginRegistry:
                 "name": name,
                 "signature": sig,
                 "preconditions": preconditions or {},
-                "effects": effects or {}
+                "effects": effects or {},
+                "requires_approval": requires_approval
             }
             return func
         return decorator

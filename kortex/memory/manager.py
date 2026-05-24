@@ -2,6 +2,7 @@ import os
 import asyncio
 from typing import Dict, Any, List
 from graphiti_core import Graphiti
+from graphiti_core.driver.kuzu_driver import KuzuDriver
 from graphiti_core.llm_client import LLMClient # Required to initialize if we use Gemini
 from kortex.extractor.client import GeminiExtractor
 
@@ -14,28 +15,14 @@ class MemoryManager:
 
     def __init__(self, db_path: str = "./kortex_kuzu_db"):
         self.db_path = db_path
-        # We need to supply Graphiti with an LLM client to do semantic extraction.
-        # It defaults to OpenAI, so for Gemini we'd ideally pass a compatible client,
-        # but for this structure we'll configure Graphiti to use the local Kuzu DB.
-        
-        # Set Kuzu driver URL format
-        os.environ["GRAPHITI_NEO4J_URI"] = f"kuzu://{os.path.abspath(self.db_path)}"
-        os.environ["GRAPHITI_NEO4J_USER"] = ""
-        os.environ["GRAPHITI_NEO4J_PASSWORD"] = ""
-        
         self.graphiti = None
         self.episode_buffer: List[Dict[str, Any]] = []
 
     def _init_client(self):
         if self.graphiti is None:
-            # We delay initialization so it doesn't block fast-path execution.
-            # Kuzu is a local embedded DB (like SQLite for graphs), so it will
-            # create the directory if it doesn't exist.
-            self.graphiti = Graphiti(
-                neo4j_uri=os.environ["GRAPHITI_NEO4J_URI"],
-                neo4j_user="",
-                neo4j_password=""
-            )
+            # Initialize Graphiti using the local Kùzu Driver
+            driver = KuzuDriver(db=self.db_path)
+            self.graphiti = Graphiti(graph_driver=driver)
 
     def hook_post_execution(self, step_name: str, input_payload: dict, execution_result: Any):
         """

@@ -8,7 +8,8 @@ def test_plugin_registration_and_execution():
     @registry.register_action(
         name="mock_move", 
         preconditions={"robot_at": "start"}, 
-        effects={"robot_at": "end"}
+        effects={"robot_at": "end"},
+        requires_approval=True
     )
     def mock_move_action(target: str) -> str:
         return f"Moved to {target}"
@@ -18,6 +19,7 @@ def test_plugin_registration_and_execution():
     assert plugin_meta["name"] == "mock_move"
     assert plugin_meta["preconditions"] == {"robot_at": "start"}
     assert plugin_meta["effects"] == {"robot_at": "end"}
+    assert plugin_meta["requires_approval"] == True
     
     # 3. Test execution
     result = registry.execute_plugin("mock_move", target="vault")

@@ -11,13 +11,14 @@ from typing import Optional
 import instructor
 from google import genai
 
-from kortex.extractor.models import HTNLaunchPad
+from kortex.extractor.models import HTNLaunchPad, ClarificationRequired, IntentExtraction
 
 
 class GeminiExtractor:
     """
     Extractor client that uses Google's GenAI (Gemini) models to extract
-    structured intents (HTNLaunchPad) from natural language prompts.
+    structured intents (HTNLaunchPad) from natural language prompts,
+    or requests clarification if the prompt is ambiguous.
     """
 
     def __init__(
@@ -49,33 +50,37 @@ class GeminiExtractor:
             mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS
         )
 
-    def extract_intent(self, prompt: str, available_tasks: list[str]) -> HTNLaunchPad:
+    def extract_intent(self, prompt: str, available_tasks: list[str]) -> IntentExtraction:
         """
         Extract the root task and parameters from a natural language prompt.
+        If the intent is ambiguous or missing required parameters, returns ClarificationRequired.
 
         Args:
             prompt: The natural language request from the user or system.
             available_tasks: A list of known tasks in the domain manifest.
 
         Returns:
-            An HTNLaunchPad instance containing the structured intent ready for HTN execution.
+            An HTNLaunchPad instance or ClarificationRequired instance.
         """
         system_instruction = (
             "You are an Intent and Parameter Extractor for the Kortex Core system. "
             "Your sole purpose is to analyze the user's natural language request and "
             "determine the appropriate root task name and its required parameters. "
             f"Available HTN tasks you can map to: {available_tasks}. "
-            "You must not perform logical reasoning or planning; output only the "
-            "structured JSON strictly adhering to the requested schema."
+            "You must not perform logical reasoning or planning. "
+            "CRITICAL HITL RULE: If the user's request is ambiguous, or if it is missing "
+            "a mandatory parameter required to confidently execute the task (e.g. they didn't "
+            "specify if a churn model is for 'household' or 'individual'), DO NOT GUESS. "
+            "Instead, return the ClarificationRequired schema asking the user for the missing info."
         )
 
-        response: HTNLaunchPad = self.client.models.generate_content(
+        response = self.client.models.generate_content(
             model=self.model_name,
             contents=[
                 system_instruction,
                 prompt
             ],
-            response_model=HTNLaunchPad,
+            response_model=IntentExtraction,
         )
         
         return response

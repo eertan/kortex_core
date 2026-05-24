@@ -1,5 +1,5 @@
 import yaml
-from typing import List
+from typing import Sequence
 import os
 
 class IntraDomainLearner:
@@ -12,7 +12,12 @@ class IntraDomainLearner:
     def __init__(self, manifest_path: str = "domain_manifest.yaml"):
         self.manifest_path = manifest_path
 
-    def chunk_successful_plan(self, failed_task_name: str, preconditions: dict, plan_actions: List[str]):
+    def chunk_successful_plan(
+        self,
+        failed_task_name: str,
+        preconditions: dict,
+        plan_actions: Sequence[str | Sequence[str]],
+    ) -> None:
         """
         Takes a sequence of successful primitive actions and writes them as an HTN method.
         """
@@ -20,10 +25,11 @@ class IntraDomainLearner:
         
         # 1. Format the action trace into a clean subtask sequence
         subtask_list = []
-        for action_name in plan_actions:
-            # We store it as a basic list element for the YAML layout
-            # e.g., 'move' or 'unlock'
-            subtask_list.append([action_name])
+        for action_spec in plan_actions:
+            if isinstance(action_spec, str):
+                subtask_list.append([action_spec])
+            else:
+                subtask_list.append([str(part) for part in action_spec])
             
         # 2. Structure the new HTN Method "Chunk"
         new_method = {

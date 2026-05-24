@@ -45,19 +45,19 @@ class Orchestrator:
         for action in self.bootstrapper.planner.problem.actions:
             local_planner.register_action(action)
         for obj in self.bootstrapper.objects.values():
-            local_planner.problem.add_object(obj)
+            local_planner.register_object(obj)
             
         # Set State
         for fluent, value in initial_state.items():
-             local_planner.problem.set_initial_value(fluent, value)
+             local_planner.set_initial_value(fluent, value)
              
         # Add Goal
         fl = self.bootstrapper.fluents[goal['fluent']]
         args = [self.bootstrapper.objects[arg] for arg in goal.get('args', [])]
         if goal.get('value', True):
-            local_planner.problem.add_goal(fl(*args))
+            local_planner.add_goal(fl(*args))
         else:
-            local_planner.problem.add_goal(~fl(*args))
+            local_planner.add_goal(~fl(*args))
             
         # Plan and Execute
         plan = local_planner.execute_plan()
