@@ -84,7 +84,8 @@ Natural language request
 ### 8. Learning and Novelty
 
 - [x] `IntraDomainLearner` chunks successful Tier 2 action traces into HTN
-  methods.
+  methods with inferred typed parameters, external preconditions, net effects,
+  and provenance.
 - [x] `SecurityValidator` checks generated Python plugin code.
 - [x] Provider-neutral novelty interface:
   - `NoveltyRequest`
@@ -103,8 +104,10 @@ Natural language request
 Implemented scenarios:
 
 - [x] Scenario 1: perfectly specified HTN task, direct execution.
-- [x] Scenario 2: goal and primitives exist, classical planner decomposes.
-- [x] Scenario 3: same as Scenario 2, but learned chunk executes directly.
+- [x] Scenario 2: goal and primitives exist, classical planner decomposes and
+  saves a condition-based learned skill.
+- [x] Scenario 3: same request as Scenario 2, but learned chunk executes
+  directly when its inferred preconditions hold.
 - [x] Scenario 4: execution requires human approval.
 - [x] Scenario 5: total impasse routes to provider-neutral novelty branch.
 - [x] Scenario 6: sleep reflection creates an executable meta-task.
@@ -172,6 +175,119 @@ Episodic memory is therefore the broad evidence/history substrate, but the
 sleep reflector should operate over validated traces derived from episodes.
 Planner facts should be promoted from memory only through explicit validation
 or deterministic extraction rules.
+
+#### Cognitive Architecture Notes
+
+Kortex already has cognitive-architecture-shaped subsystems, but they need to
+be made first-class and governed.
+
+1. **Procedural Memory**
+   - Current representation:
+     - domain HTN manifests
+     - primitive action specs
+     - learned chunks from `IntraDomainLearner`
+     - intrinsic orchestration flow in `KortexAgent`
+   - Procedural memory should be treated as durable, inspectable knowledge, not
+     just YAML loaded by the bootstrapper.
+   - Learned procedures should retain:
+     - typed parameters
+     - preconditions
+     - effects
+     - provenance/source traces
+     - success/failure history
+     - confidence or utility
+     - promotion/deprecation status
+     - approval requirements for risky procedures
+   - Current status: learned chunks now preserve inferred parameters,
+     preconditions, effects, and provenance. Remaining work is lifecycle,
+     utility/confidence, negative examples, and competing-method selection.
+
+2. **Working Memory**
+   - Current gap: working state is spread across extractor output, planner
+     objects/facts/goals, trace recorder, HITL state, memory hydration, and
+     orchestration locals.
+   - Next architecture step: define a typed unified working-memory model for:
+     - active user/entity/session
+     - current goal stack
+     - active task and bindings
+     - explicit planner facts
+     - assumptions and unresolved variables
+     - selected planner tier
+     - HITL/clarification state
+     - trace/event references
+   - This should become the shared cognitive state that retrieval, planning,
+     execution, reflection, and novelty operate against.
+
+3. **Metacognition**
+   - Current offline form: sleep reflection over traces to synthesize reusable
+     meta-tasks.
+   - Current online forms: planning impasse routing, HITL gating, and
+     clarification stops.
+   - Remaining work:
+     - explicit policy for when to ask, search, use memory, execute, reflect,
+       route to novelty, or refuse
+     - confidence/utility checks before using learned skills
+     - validation before promoting reflected skills
+     - background sleep/reflection over `ValidatedTraceMemory`
+     - audit records for all self-modification proposals
+
+The target framing is:
+
+```text
+conversation/semantic/episodic memory provide context and evidence
+working memory holds the current cognitive state
+procedural memory proposes condition-based operators and HTN methods
+planner/executor applies them deterministically
+metacognition regulates uncertainty, learning, novelty, and promotion
+```
+
+#### Reinforcement Learning Expansion Notes
+
+RL should be treated as control knowledge, not operator knowledge. It may rank
+or prioritize choices, but it must not bypass symbolic preconditions,
+validation, HITL gates, or deterministic execution.
+
+Promising integration points:
+
+1. **HTN Method Selection**
+   - When multiple methods can satisfy the same abstract task, use a learned
+     policy or contextual bandit to rank applicable methods.
+   - Input features can include:
+     - active working-memory facts
+     - task name and bindings
+     - user/entity context
+     - method provenance
+     - prior success/failure history
+     - cost/latency/risk metadata
+   - Output is only a ranking or preference. The planner still verifies method
+     preconditions before execution.
+
+2. **Planner Tier Selection**
+   - Learn when to prefer direct HTN expansion, classical planning, memory
+     lookup, clarification, HITL escalation, novelty routing, or refusal.
+   - This would make the metacognitive control policy adaptive while keeping
+     each tier deterministic and auditable.
+   - Reward signals may include successful completion, avoided unnecessary
+     clarification, user correction, HITL denial, execution failure, latency,
+     and novelty validation outcome.
+
+3. **Learned Skill Utility and Confidence**
+   - Add utility/confidence fields to learned procedural memory:
+     - success count
+     - failure count
+     - average cost
+     - average latency
+     - last validated timestamp
+     - confidence score
+     - utility score
+   - Update these values from validated execution outcomes.
+   - Use them to choose among competing learned skills and to decide whether a
+     skill should stay draft, become promoted, require revalidation, or be
+     deprecated.
+
+Recommended first implementation is not full deep RL. Start with transparent
+utility updates or contextual bandits over validated traces, because those fit
+the current HTN/planner architecture and are easier to audit.
 
 #### External Knowledge Graph Notes
 

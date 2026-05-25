@@ -71,7 +71,10 @@ class DomainBootstrapper:
             
             # In UPF, method parameters must be declared at instantiation.
             # For this MVP chunking, we extract all required parameters from the primitive subtasks.
-            method_params = {}
+            method_params = {
+                param_name: self.types[type_name]
+                for param_name, type_name in method_def.get("parameters", {}).items()
+            }
             subtasks_to_add = []
             
             for sub_name in method_def.get('ordered_subtasks', []):
@@ -115,6 +118,11 @@ class DomainBootstrapper:
                 target_task=task_name,
                 parameter_names=list(method_params.keys()),
                 ordered_subtasks=method_def.get('ordered_subtasks', []),
+                preconditions=(
+                    method_def.get("preconditions", [])
+                    if isinstance(method_def.get("preconditions", []), list)
+                    else []
+                ),
             )
 
     def load_problem_state(self, objects: dict[str, str], initial_state: list[dict[str, Any]]):

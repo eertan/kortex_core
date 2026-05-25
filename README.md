@@ -54,7 +54,8 @@ Kortex currently uses three resolution tiers:
 2. **Tier 2: Classical fallback planning**
    If the request is a state goal, Kortex uses Pyperplan over a plain classical
    UPF problem. Successful traces can be chunked into reusable HTN methods with
-   `IntraDomainLearner`.
+   `IntraDomainLearner`; learned methods now preserve inferred typed
+   parameters, external preconditions, net effects, and trace provenance.
 
 3. **Tier 3: Novelty branch**
    If deterministic planning cannot solve a goal, Kortex builds a
@@ -147,6 +148,18 @@ Run:
 ```
 
 Latest verified state: `33 passed`.
+
+## Scenario Demo
+
+The scenario suite also has an executable demo runner that prints each plan,
+driver action, HITL decision, novelty dry-run, and sleep-reflection result:
+
+```bash
+.venv/bin/python -m scenarios.run_demo
+```
+
+Run one scenario at a time with `--scenario 1` through `--scenario 6`. The demo
+writes structured logs to `demo_logs/scenario_demo_latest.json` by default.
 
 ## Known Limitations
 

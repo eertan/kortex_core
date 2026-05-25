@@ -24,6 +24,7 @@ class KortexPlanner:
         self.classical_problem = Problem(f"{name}_classical")
         self._htn_methods: dict[str, dict[str, Any]] = {}
         self._htn_goals: list[tuple[str, list[str]]] = []
+        self._initial_values: dict[str, bool] = {}
 
     def register_fluent(self, fluent: Fluent) -> None:
         """Register a state fluent."""
@@ -44,6 +45,7 @@ class KortexPlanner:
         """Set a world-state fact in both planning views."""
         self.problem.set_initial_value(fluent_expression, value)
         self.classical_problem.set_initial_value(fluent_expression, value)
+        self._initial_values[str(fluent_expression)] = value
 
     def add_goal(self, goal_expression: FNode) -> None:
         """Register a classical state goal for Tier 2 planning."""
@@ -63,11 +65,13 @@ class KortexPlanner:
         target_task: str,
         parameter_names: list[str],
         ordered_subtasks: list[list[str]],
+        preconditions: list[dict[str, Any]] | None = None,
     ) -> None:
         """Register deterministic YAML method metadata used by the local HTN expander."""
         self._htn_methods[target_task] = {
             "parameter_names": parameter_names,
             "ordered_subtasks": ordered_subtasks,
+            "preconditions": preconditions or [],
         }
 
     def add_htn_goal(self, task_name: str, args: list[str]) -> None:
@@ -88,6 +92,7 @@ class KortexPlanner:
             )
 
         bindings = dict(zip(parameter_names, args))
+        self._validate_htn_preconditions(task_name, method_spec["preconditions"], bindings)
         expanded: list[ActionInstance] = []
 
         for subtask in method_spec["ordered_subtasks"]:
@@ -108,6 +113,30 @@ class KortexPlanner:
             expanded.append(ActionInstance(action, tuple(actual_objects)))
 
         return expanded
+
+    def _validate_htn_preconditions(
+        self,
+        task_name: str,
+        preconditions: list[dict[str, Any]],
+        bindings: dict[str, str],
+    ) -> None:
+        """Ensure a learned HTN method's symbolic preconditions hold before expansion."""
+        for precondition in preconditions:
+            fluent_name = precondition["fluent"]
+            bound_args = [
+                bindings.get(str(arg), str(arg))
+                for arg in precondition.get("args", [])
+            ]
+            fluent = self.problem.fluent(fluent_name)
+            objects = [self.problem.object(arg) for arg in bound_args]
+            expression = fluent(*objects)
+            expected = precondition.get("value", True)
+            actual = self._initial_values.get(str(expression), False)
+            if actual != expected:
+                raise ValueError(
+                    f"HTN method for task '{task_name}' requires "
+                    f"{expression}={expected}, but current state has {actual}."
+                )
 
     def execute_plan(self, initial_state: dict[Any, Any] = None, goal_task: str = None) -> Plan | None:
         """

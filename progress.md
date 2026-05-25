@@ -12,7 +12,7 @@ Kortex Core has a working MVP skeleton for deterministic agent execution:
 - top-level agent loop
 - structured tracing
 - explicit memory fact hydration with Kuzu support
-- macro chunking
+- macro chunking with inferred skill preconditions/effects
 - provider-neutral novelty branch
 - sleep reflection scaffold
 - subagent enclosure
@@ -23,7 +23,10 @@ Kortex Core has a working MVP skeleton for deterministic agent execution:
 .venv/bin/pytest -q
 ```
 
-Latest verified result: `33 passed`.
+Latest full-suite verified result: `33 passed`.
+
+Latest targeted verification after skill-contract learning update:
+`9 passed` for chunking plus scenario tests.
 
 ## Important Caveat
 

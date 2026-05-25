@@ -204,6 +204,29 @@ def test_scenario_3_learned_chunk(base_domain):
     assert action_names == ["move", "unlock"]
 
 
+def test_learned_chunk_requires_inferred_preconditions(base_domain):
+    """
+    A learned HTN method must preserve the condition contract discovered during
+    planning. The access_secure_vault chunk requires robot_at(frm), so it should
+    not expand if the robot is not at the source location.
+    """
+    chunker = IntraDomainLearner(str(base_domain))
+    chunker.chunk_successful_plan(
+        failed_task_name="access_secure_vault",
+        preconditions={},
+        plan_actions=[["move", "frm", "to"], ["unlock", "to"]],
+    )
+
+    objects = {"lobby": "Location", "vault": "Location"}
+    initial_state = []
+
+    planner, bootstrapper = setup_planner(base_domain, objects, initial_state)
+    bootstrapper.create_goal({"task": "access_secure_vault", "args": ["lobby", "vault"]})
+
+    with pytest.raises(ValueError, match="requires robot_at\\(lobby\\)=True"):
+        planner.execute_plan()
+
+
 def test_scenario_4_hitl_approval(base_domain):
     """
     Scenario 4: Like scenario 1 or 2, but requires approval.

@@ -151,8 +151,11 @@ class DomainManifestValidator:
         if not isinstance(methods, list):
             raise DomainManifestError("'htn_methods' must be a list when provided.")
 
+        fluents = manifest.get("fluents", {})
+
         for method_def in methods:
             method_name = method_def.get("name", "<unnamed>")
+            method_params = set(method_def.get("parameters", {}).keys())
             for subtask in method_def.get("ordered_subtasks", []):
                 if not isinstance(subtask, list) or not subtask:
                     raise DomainManifestError(
@@ -169,3 +172,43 @@ class DomainManifestValidator:
                         f"{len(subtask[1:])} args, but action expects "
                         f"{len(actions[action_name])}."
                     )
+                method_params.update(str(arg) for arg in subtask[1:])
+
+            for section in ("preconditions", "effects"):
+                facts = method_def.get(section, [])
+                if isinstance(facts, Mapping):
+                    continue
+                if not isinstance(facts, list):
+                    raise DomainManifestError(
+                        f"Method '{method_name}' {section} must be a list when provided."
+                    )
+                for fact_def in facts:
+                    self._validate_method_fact(
+                        method_name=method_name,
+                        section=section,
+                        fact_def=fact_def,
+                        fluents=fluents,
+                        known_params=method_params,
+                    )
+
+    def _validate_method_fact(
+        self,
+        method_name: str,
+        section: str,
+        fact_def: Mapping[str, Any],
+        fluents: Mapping[str, Any],
+        known_params: set[str],
+    ) -> None:
+        """Validate one HTN method precondition/effect fact reference."""
+        fluent_name = fact_def.get("fluent")
+        if fluent_name not in fluents:
+            raise DomainManifestError(
+                f"Method '{method_name}' {section} references unknown fluent '{fluent_name}'."
+            )
+
+        for arg_name in fact_def.get("args", []):
+            if arg_name not in known_params:
+                raise DomainManifestError(
+                    f"Method '{method_name}' {section} references unknown "
+                    f"parameter '{arg_name}'."
+                )
