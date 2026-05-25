@@ -319,6 +319,56 @@ Recommended first implementation is not full deep RL. Start with transparent
 utility updates or contextual bandits over validated traces, because those fit
 the current HTN/planner architecture and are easier to audit.
 
+#### Domain Package and Intent Config Notes
+
+For a general-purpose Kortex harness, domains should eventually be packaged as
+multiple coordinated config files rather than one overloaded manifest.
+
+Recommended domain package shape:
+
+```text
+domains/<domain_name>/domain.yaml
+domains/<domain_name>/intents.yaml
+domains/<domain_name>/memory_policy.yaml
+domains/<domain_name>/plugins.py
+```
+
+Responsibilities:
+
+1. **Task/domain manifest**
+   - types
+   - fluents
+   - primitive actions
+   - HTN methods
+   - plugin/action bindings
+   - approval requirements
+
+2. **Intent/interface manifest**
+   - user-facing intents
+   - descriptions and examples
+   - required and optional slots
+   - slot types and normalization rules
+   - clarification prompts
+   - named parameter mappings into HTN tasks or fluent goals
+   - synonyms/aliases
+   - out-of-domain boundaries
+
+3. **Memory policy manifest**
+   - which memory layers to query for each intent
+   - retrieval hints, such as user preferences or semantic domain facts
+   - promotion rules from retrieved context to planner facts
+   - cache/provenance/freshness rules
+
+The extractor/interpreter should be configured from this package. It should not
+guess task schemas from unstructured prose. The LLM receives available intents,
+slot schemas, clarification rules, examples, and domain boundaries, then returns
+validated structured output. Deterministic policy, intent bindings, and the
+planner remain authoritative.
+
+Current status: `intent_bindings` live inside the domain YAML for MVP
+simplicity. Future work should split them into an explicit `intents.yaml` while
+keeping backward compatibility.
+
 #### External Knowledge Graph Notes
 
 External knowledge graphs should not be connected directly into agent memory as
