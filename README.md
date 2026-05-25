@@ -30,6 +30,8 @@ Core modules:
   - Classical state goals are sent to Pyperplan through a plain UPF `Problem`.
   - The hierarchical and classical planning views are intentionally separate.
 - `kortex.config`: YAML domain bootstrapper and manifest/plugin validation.
+  Domain manifests can declare `intent_bindings` that map named extractor
+  parameters to HTN task invocations or classical fluent goals.
 - `kortex.plugins`: explicit `PluginRegistry` for primitive Python actions.
   The global registry remains as a convenience default, but production paths
   should inject a registry per runtime/domain.
@@ -44,6 +46,12 @@ Core modules:
   external tools.
 
 ## Planning Tiers
+
+New domains should prefer named intent bindings over positional `args`.
+Extractor output can use conventional keys such as `origin`, `destination`, or
+`server`; the manifest owns the mapping from those keys to ordered HTN task
+arguments or fluent goal arguments. The legacy `args` convention remains for
+compatibility.
 
 Kortex currently uses three resolution tiers:
 
@@ -87,9 +95,19 @@ The memory system has two different responsibilities:
 - `MemoryFact` / `FactStore`: explicit boolean facts that can safely hydrate
   deterministic planner state.
 - `MemoryManager` / Graphiti: episodic text digestion for longer-term memory.
+- `MemoryRecord`: uniform governance envelope around specialized memory
+  payloads.
+- `WorkingMemoryState`: active cognitive state for the current session, goal,
+  entities, facts, bindings, HITL state, retrieved records, and trace refs.
 
 `StateHydrator` consumes explicit facts only. It does not ask an LLM to infer
 planner state at runtime.
+`KortexAgent.run` now creates a working-memory state for each request, records
+the extracted task/entities, promotes validated hydrated facts into active
+planner state, tracks planner tier, applies declared action effects after
+execution, records a typed validated-trace memory record, and returns the state
+on `AgentRunResult`. The orchestrator and scenario demo also project declared
+action effects into working memory.
 
 The intended memory design has three layers:
 
@@ -101,6 +119,9 @@ The intended memory design has three layers:
 
 Sleep reflection should learn from validated traces, not directly from raw
 conversation memory. Planner state should be hydrated only from explicit facts.
+The emerging representation pattern is a uniform record envelope with
+specialized payloads, rather than forcing every memory type into one physical
+schema.
 
 Current caveat: `SleepReflector` still accepts raw action-sequence lists. Before
 Graphiti is wired more deeply into reflection, this should become a

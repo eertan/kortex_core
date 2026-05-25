@@ -83,3 +83,31 @@ actions:
 
     assert "missing parameters" in str(exc.value)
     assert "loc" in str(exc.value)
+
+
+def test_bootstrapper_rejects_invalid_intent_binding_parameter_reference(tmp_path):
+    domain_file = tmp_path / "domain.yaml"
+    domain_file.write_text(
+        """
+domain_name: invalid_domain
+types:
+  - Location
+fluents:
+  robot_at:
+    signature: { loc: Location }
+actions: []
+intent_bindings:
+  relocate_robot:
+    type: goals
+    required_parameters: [destination]
+    goals:
+      - fluent: robot_at
+        args: [unknown_destination]
+"""
+    )
+    bootstrapper = DomainBootstrapper(KortexPlanner("invalid_domain"))
+
+    with pytest.raises(DomainManifestError) as exc:
+        bootstrapper.load_domain(str(domain_file))
+
+    assert "unknown required parameter 'unknown_destination'" in str(exc.value)

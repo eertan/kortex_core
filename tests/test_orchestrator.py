@@ -55,3 +55,11 @@ def test_async_multi_goal_orchestration(tmp_path):
     # The output from the python plugins should be in the execution list
     execution_outputs = str(results["robot_at"]["execution"])
     assert "Robot drove from" in execution_outputs
+    assert orchestrator.last_working_memory is not None
+    final_facts = {
+        (fact.fluent, tuple(fact.args)): fact.value
+        for fact in orchestrator.last_working_memory.current_facts
+    }
+    assert final_facts[("robot_at", ("vault_1",))] is True
+    assert final_facts[("robot_at", ("vault_2",))] is True
+    assert orchestrator.last_working_memory.planner_tier == "classical"

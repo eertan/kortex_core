@@ -5,6 +5,7 @@ from graphiti_core import Graphiti
 from graphiti_core.driver.kuzu_driver import KuzuDriver
 from graphiti_core.llm_client import LLMClient # Required to initialize if we use Gemini
 from kortex.extractor.client import GeminiExtractor
+from kortex.memory.records import MemoryRecord
 
 class MemoryManager:
     """
@@ -17,6 +18,7 @@ class MemoryManager:
         self.db_path = db_path
         self.graphiti = None
         self.episode_buffer: List[Dict[str, Any]] = []
+        self.memory_record_buffer: list[MemoryRecord] = []
 
     def _init_client(self):
         if self.graphiti is None:
@@ -36,6 +38,10 @@ class MemoryManager:
             "outcome": str(execution_result)
         }
         self.episode_buffer.append(episode_log)
+
+    def hook_memory_record(self, record: MemoryRecord) -> None:
+        """Append a typed memory record for later persistence or reflection."""
+        self.memory_record_buffer.append(record)
 
     async def process_sleep_phase(self):
         """

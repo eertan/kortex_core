@@ -19,6 +19,7 @@ class TraceEvent:
     run_id: str
     stage: str
     message: str
+    event_id: str = field(default_factory=lambda: str(uuid4()))
     payload: dict[str, Any] = field(default_factory=dict)
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
@@ -51,6 +52,7 @@ class TraceRecorder:
         """Return trace events as JSON-serializable dictionaries."""
         return [
             {
+                "event_id": event.event_id,
                 "run_id": event.run_id,
                 "stage": event.stage,
                 "message": event.message,

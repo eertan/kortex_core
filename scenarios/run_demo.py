@@ -16,7 +16,12 @@ from unified_planning.shortcuts import get_environment
 from unified_planning.plans import Plan
 
 from kortex.config.bootstrapper import DomainBootstrapper
+from kortex.memory.adapters import (
+    planner_fact_record_from_dict,
+    planner_fact_records_from_action_effects,
+)
 from kortex.memory.reflector import SleepReflector, SynthesizedMetaTask
+from kortex.memory.working import WorkingMemoryState
 from kortex.plugins.registry import PluginRegistry
 from kortex.sandbox.chunker import IntraDomainLearner
 from kortex.sandbox.novelty import NoveltyBranch
@@ -301,6 +306,8 @@ def execute(
     plan: Plan,
     registry: PluginRegistry,
     logger: DemoLogger,
+    bootstrapper: DomainBootstrapper | None = None,
+    working_memory: WorkingMemoryState | None = None,
     interactive: bool = False,
 ) -> list[Any]:
     """Execute a plan through the physical driver with trace capture."""
@@ -310,43 +317,85 @@ def execute(
         trace_callback=logger.trace,
     )
     results = driver.execute_plan(plan)
+    if bootstrapper is not None and working_memory is not None:
+        apply_plan_effects_to_working_memory(plan, bootstrapper, working_memory)
+        logger.note(
+            "Working memory facts: "
+            + json.dumps(working_memory.to_bootstrapper_initial_state(), sort_keys=True)
+        )
     logger.record_results(results)
     return results
+
+
+def build_working_memory(
+    session_id: str,
+    initial_state: list[dict[str, Any]],
+) -> WorkingMemoryState:
+    """Create and seed demo working memory from explicit initial facts."""
+    working_memory = WorkingMemoryState(session_id=session_id)
+    for fact in initial_state:
+        record = planner_fact_record_from_dict(
+            fact,
+            source_system="scenario_initial_state",
+            source_reference=session_id,
+        )
+        working_memory.hydrate_planner_fact(record)
+    return working_memory
+
+
+def apply_plan_effects_to_working_memory(
+    plan: Plan,
+    bootstrapper: DomainBootstrapper,
+    working_memory: WorkingMemoryState,
+) -> None:
+    """Apply declared action effects into demo working memory."""
+    for action_instance in plan.actions:
+        for record in planner_fact_records_from_action_effects(
+            action_instance,
+            bootstrapper.action_specs,
+            source_system="scenario_execution_effects",
+            source_reference=working_memory.session_id,
+        ):
+            working_memory.hydrate_planner_fact(record)
 
 
 def scenario_1(domain_path: Path, registry: PluginRegistry, logger: DemoLogger) -> None:
     """Run direct HTN expansion for a perfectly specified task."""
     logger.start("scenario_1", "direct HTN method execution", domain_path)
+    initial_state = [{"fluent": "robot_at", "args": ["lobby"]}]
+    working_memory = build_working_memory("scenario_1", initial_state)
     planner, bootstrapper = setup_planner(
         domain_path,
         registry,
         {"lobby": "Location", "hallway": "Location"},
-        [{"fluent": "robot_at", "args": ["lobby"]}],
+        initial_state,
     )
     bootstrapper.create_goal({"task": "deliver_straight", "args": ["lobby", "hallway"]})
     plan = planner.execute_plan()
     logger.record_plan(plan)
     if plan is not None:
-        execute(plan, registry, logger)
+        execute(plan, registry, logger, bootstrapper, working_memory)
 
 
 def scenario_2(domain_path: Path, registry: PluginRegistry, logger: DemoLogger) -> None:
     """Run classical planning once, then save the successful trace as a skill."""
     logger.start("scenario_2", "classical planner bridges a goal gap and saves a skill", domain_path)
+    initial_state = [
+        {"fluent": "robot_at", "args": ["lobby"]},
+        {"fluent": "door_unlocked", "args": ["lobby"]},
+    ]
+    working_memory = build_working_memory("scenario_2", initial_state)
     planner, bootstrapper = setup_planner(
         domain_path,
         registry,
         {"lobby": "Location", "vault": "Location"},
-        [
-            {"fluent": "robot_at", "args": ["lobby"]},
-            {"fluent": "door_unlocked", "args": ["lobby"]},
-        ],
+        initial_state,
     )
     create_access_secure_vault_goal(bootstrapper, domain_path, logger)
     plan = planner.execute_plan()
     logger.record_plan(plan)
     if plan is not None:
-        execute(plan, registry, logger)
+        execute(plan, registry, logger, bootstrapper, working_memory)
         chunker = IntraDomainLearner(str(domain_path))
         chunker.chunk_successful_plan(
             failed_task_name="access_secure_vault",
@@ -386,27 +435,31 @@ def scenario_3(domain_path: Path, registry: PluginRegistry, logger: DemoLogger) 
             preconditions={},
             plan_actions=[["move", "frm", "to"], ["unlock", "to"]],
         )
+    initial_state = [{"fluent": "robot_at", "args": ["lobby"]}]
+    working_memory = build_working_memory("scenario_3", initial_state)
     planner, bootstrapper = setup_planner(
         domain_path,
         registry,
         {"lobby": "Location", "vault": "Location"},
-        [{"fluent": "robot_at", "args": ["lobby"]}],
+        initial_state,
     )
     create_access_secure_vault_goal(bootstrapper, domain_path, logger)
     plan = planner.execute_plan()
     logger.record_plan(plan)
     if plan is not None:
-        execute(plan, registry, logger)
+        execute(plan, registry, logger, bootstrapper, working_memory)
 
 
 def scenario_4(domain_path: Path, registry: PluginRegistry, logger: DemoLogger) -> None:
     """Run HITL denial and approval paths for a sensitive primitive."""
     logger.start("scenario_4", "HITL approval gates a sensitive action", domain_path)
+    initial_state = [{"fluent": "server_unreachable", "args": ["prod_db"], "value": False}]
+    working_memory = build_working_memory("scenario_4", initial_state)
     planner, bootstrapper = setup_planner(
         domain_path,
         registry,
         {"prod_db": "Server"},
-        [{"fluent": "server_unreachable", "args": ["prod_db"], "value": False}],
+        initial_state,
     )
     bootstrapper.create_goal({"fluent": "server_unreachable", "args": ["prod_db"]})
     plan = planner.execute_plan()
@@ -427,6 +480,11 @@ def scenario_4(domain_path: Path, registry: PluginRegistry, logger: DemoLogger) 
 
     with patch("builtins.input", return_value="y"):
         results = driver.execute_plan(plan)
+    apply_plan_effects_to_working_memory(plan, bootstrapper, working_memory)
+    logger.note(
+        "Working memory facts: "
+        + json.dumps(working_memory.to_bootstrapper_initial_state(), sort_keys=True)
+    )
     logger.record_results(results)
 
 
@@ -496,11 +554,12 @@ def scenario_6(domain_path: Path, registry: PluginRegistry, logger: DemoLogger) 
         {"prod_db": "Server"},
         [],
     )
+    working_memory = build_working_memory("scenario_6", [])
     bootstrapper.create_goal({"task": "optimize_local_storage", "args": ["prod_db"]})
     plan = planner.execute_plan()
     logger.record_plan(plan)
     if plan is not None:
-        execute(plan, registry, logger)
+        execute(plan, registry, logger, bootstrapper, working_memory)
 
 
 SCENARIOS: dict[str, Callable[[Path, PluginRegistry, DemoLogger], None]] = {

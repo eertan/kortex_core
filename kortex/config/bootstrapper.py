@@ -21,6 +21,8 @@ class DomainBootstrapper:
         self.types: dict[str, UserType] = {}
         self.fluents: dict[str, Fluent] = {}
         self.objects: dict[str, Object] = {}
+        self.action_specs: dict[str, dict[str, Any]] = {}
+        self.intent_bindings: dict[str, dict[str, Any]] = {}
 
     def load_domain(self, filepath: str) -> None:
         """Load domain structures (types, fluents, actions) from a YAML file."""
@@ -30,6 +32,10 @@ class DomainBootstrapper:
         validator = DomainManifestValidator()
         validator.validate(data)
         validator.validate_plugin_bindings(data, self.registry)
+        self.intent_bindings = {
+            str(name): dict(binding)
+            for name, binding in data.get("intent_bindings", {}).items()
+        }
 
         # 1. Parse Types
         for t_name in data.get('types', []):
@@ -45,6 +51,7 @@ class DomainBootstrapper:
         # 3. Parse Primitive Actions
         for act_def in data.get('actions', []):
             a_name = act_def['name']
+            self.action_specs[a_name] = act_def
             params = {k: self.types[v] for k, v in act_def.get('parameters', {}).items()}
             action = InstantaneousAction(a_name, **params)
             

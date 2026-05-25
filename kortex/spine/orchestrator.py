@@ -1,7 +1,13 @@
 import concurrent.futures
+import threading
 from typing import Dict, Any, List
 from kortex.spine.planner import KortexPlanner
 from kortex.spine.driver import ExecutionDriver
+from kortex.memory.adapters import (
+    planner_fact_record_from_dict,
+    planner_fact_records_from_action_effects,
+)
+from kortex.memory.working import WorkingMemoryState
 
 class Orchestrator:
     """
@@ -14,6 +20,8 @@ class Orchestrator:
         """Initialize the orchestrator with shared bootstrapper and driver."""
         self.bootstrapper = bootstrapper
         self.driver = driver or ExecutionDriver(registry=bootstrapper.registry)
+        self.last_working_memory: WorkingMemoryState | None = None
+        self._working_memory_lock = threading.Lock()
 
     def _are_goals_independent(self, goal_list: List[Dict[str, Any]]) -> bool:
         """
@@ -31,7 +39,12 @@ class Orchestrator:
             
         return True
 
-    def _execute_single_goal(self, goal: Dict[str, Any], initial_state: dict) -> List[Any]:
+    def _execute_single_goal(
+        self,
+        goal: Dict[str, Any],
+        initial_state: dict,
+        working_memory: WorkingMemoryState | None = None,
+    ) -> List[Any]:
         """Creates a localized planner instance for a single goal and runs it."""
         print(f"[Orchestrator] Spawning localized planner for goal: {goal['fluent']}({goal.get('args')})")
         
@@ -63,21 +76,39 @@ class Orchestrator:
         plan = local_planner.execute_plan()
         if not plan:
             raise RuntimeError(f"Impasse reached for goal {goal}. No plan found.")
-            
-        return self.driver.execute_plan(plan)
 
-    def dispatch(self, goals: List[Dict[str, Any]], master_initial_state: dict) -> Dict[str, Any]:
+        execution = self.driver.execute_plan(plan)
+        if working_memory is not None:
+            self._apply_plan_effects_to_working_memory(plan, working_memory)
+        return execution
+
+    def dispatch(
+        self,
+        goals: List[Dict[str, Any]],
+        master_initial_state: dict,
+        working_memory: WorkingMemoryState | None = None,
+    ) -> Dict[str, Any]:
         """
         Evaluates a list of goals and dispatches them either sequentially or concurrently.
         """
         results = {}
+        active_memory = working_memory or WorkingMemoryState(session_id="orchestrator")
+        self.last_working_memory = active_memory
+        active_memory.goal_stack.extend(goals)
+        active_memory.planner_tier = "classical"
+        self._seed_working_memory_from_master_state(active_memory, master_initial_state)
         
         if self._are_goals_independent(goals):
             print("[Orchestrator] Goals are independent. Executing concurrently.")
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 # Submit all goals to the thread pool
                 future_to_goal = {
-                    executor.submit(self._execute_single_goal, g, master_initial_state): g['fluent'] 
+                    executor.submit(
+                        self._execute_single_goal,
+                        g,
+                        master_initial_state,
+                        active_memory,
+                    ): g['fluent']
                     for g in goals
                 }
                 
@@ -94,10 +125,64 @@ class Orchestrator:
             # In production, the planner handles multi-goal interference internally.
             for g in goals:
                 try:
-                    res = self._execute_single_goal(g, master_initial_state)
+                    res = self._execute_single_goal(g, master_initial_state, active_memory)
                     results[g['fluent']] = {"status": "success", "execution": res}
                     # Update master state here based on effects if necessary
                 except Exception as exc:
                     results[g['fluent']] = {"status": "failed", "error": str(exc)}
                     
         return results
+
+    def _seed_working_memory_from_master_state(
+        self,
+        working_memory: WorkingMemoryState,
+        master_initial_state: dict,
+    ) -> None:
+        """Best-effort projection of master UPF state into working memory."""
+        for expression, value in master_initial_state.items():
+            fact = self._fact_dict_from_expression(expression, bool(value))
+            if fact is None:
+                continue
+            record = planner_fact_record_from_dict(
+                fact,
+                source_system="orchestrator_initial_state",
+                source_reference=working_memory.session_id,
+            )
+            with self._working_memory_lock:
+                working_memory.hydrate_planner_fact(record)
+
+    def _fact_dict_from_expression(
+        self,
+        expression: Any,
+        value: bool,
+    ) -> dict[str, Any] | None:
+        """Convert a simple UPF fluent expression into a fact dict."""
+        fluent_name = None
+        arg_names: list[str] = []
+        if hasattr(expression, "fluent") and expression.fluent() is not None:
+            fluent_name = expression.fluent().name
+            arg_names = [arg.object().name for arg in expression.args]
+        else:
+            rendered = str(expression)
+            if "(" not in rendered or not rendered.endswith(")"):
+                return None
+            fluent_name, raw_args = rendered[:-1].split("(", maxsplit=1)
+            arg_names = [arg.strip() for arg in raw_args.split(",") if arg.strip()]
+
+        return {"fluent": fluent_name, "args": arg_names, "value": value}
+
+    def _apply_plan_effects_to_working_memory(
+        self,
+        plan,
+        working_memory: WorkingMemoryState,
+    ) -> None:
+        """Apply declared action effects to the orchestrator working memory."""
+        for action_instance in plan.actions:
+            for record in planner_fact_records_from_action_effects(
+                action_instance,
+                self.bootstrapper.action_specs,
+                source_system="orchestrator_execution_effects",
+                source_reference=working_memory.session_id,
+            ):
+                with self._working_memory_lock:
+                    working_memory.hydrate_planner_fact(record)

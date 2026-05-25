@@ -24,6 +24,7 @@ class DomainManifestValidator:
         fluents = self._validate_fluents(manifest, types)
         actions = self._validate_actions(manifest, types, fluents)
         self._validate_methods(manifest, actions)
+        self._validate_intent_bindings(manifest, fluents)
 
     def validate_plugin_bindings(
         self,
@@ -211,4 +212,88 @@ class DomainManifestValidator:
                 raise DomainManifestError(
                     f"Method '{method_name}' {section} references unknown "
                     f"parameter '{arg_name}'."
+                )
+
+    def _validate_intent_bindings(
+        self,
+        manifest: Mapping[str, Any],
+        fluents: dict[str, set[str]],
+    ) -> None:
+        """Validate optional named intent-to-goal binding declarations."""
+        intent_bindings = manifest.get("intent_bindings", {})
+        if not isinstance(intent_bindings, Mapping):
+            raise DomainManifestError("'intent_bindings' must be a mapping when provided.")
+
+        task_names = {
+            str(method_def.get("target_task"))
+            for method_def in manifest.get("htn_methods", [])
+            if method_def.get("target_task") is not None
+        }
+        for intent_name, binding in intent_bindings.items():
+            if not isinstance(binding, Mapping):
+                raise DomainManifestError(
+                    f"Intent binding '{intent_name}' must be a mapping."
+                )
+
+            binding_type = binding.get("type")
+            if binding_type not in {"task", "goals"}:
+                raise DomainManifestError(
+                    f"Intent binding '{intent_name}' type must be 'task' or 'goals'."
+                )
+
+            required_parameters = binding.get("required_parameters", [])
+            if (
+                not isinstance(required_parameters, list)
+                or not all(isinstance(param, str) for param in required_parameters)
+            ):
+                raise DomainManifestError(
+                    f"Intent binding '{intent_name}' required_parameters must be a list of strings."
+                )
+            required_set = set(required_parameters)
+
+            if binding_type == "task":
+                task_name = binding.get("task")
+                if not isinstance(task_name, str) or task_name not in task_names:
+                    raise DomainManifestError(
+                        f"Intent binding '{intent_name}' references unknown task '{task_name}'."
+                    )
+                task_args = binding.get("args", [])
+                self._validate_binding_args(intent_name, "args", task_args, required_set)
+                continue
+
+            goals = binding.get("goals", [])
+            if not isinstance(goals, list) or not goals:
+                raise DomainManifestError(
+                    f"Intent binding '{intent_name}' goals must be a non-empty list."
+                )
+            for goal in goals:
+                if not isinstance(goal, Mapping):
+                    raise DomainManifestError(
+                        f"Intent binding '{intent_name}' contains an invalid goal."
+                    )
+                fluent_name = goal.get("fluent")
+                if fluent_name not in fluents:
+                    raise DomainManifestError(
+                        f"Intent binding '{intent_name}' references unknown fluent '{fluent_name}'."
+                    )
+                goal_args = goal.get("args", [])
+                self._validate_binding_args(intent_name, "goal args", goal_args, required_set)
+
+    def _validate_binding_args(
+        self,
+        intent_name: str,
+        section: str,
+        args: Any,
+        required_parameters: set[str],
+    ) -> None:
+        """Validate named parameter references inside an intent binding."""
+        if not isinstance(args, list):
+            raise DomainManifestError(
+                f"Intent binding '{intent_name}' {section} must be a list."
+            )
+        for arg_name in args:
+            if arg_name not in required_parameters:
+                raise DomainManifestError(
+                    f"Intent binding '{intent_name}' {section} references unknown "
+                    f"required parameter '{arg_name}'."
                 )

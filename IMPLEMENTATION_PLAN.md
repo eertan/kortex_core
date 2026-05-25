@@ -67,6 +67,9 @@ Natural language request
 - [x] Top-level `KortexAgent` loop:
   extraction, clarification, hydration, bootstrap, planning, execution, trace,
   memory writeback.
+- [x] Manifest-level `intent_bindings` map named extractor parameters into HTN
+  task invocations or classical fluent goals, so runtime planning no longer
+  depends on positional `args` for configured domains.
 - [x] Driver-level traces for action preparation, success, failure, and HITL
   approval decisions.
 
@@ -131,6 +134,12 @@ Latest verified test state: `33 passed`.
 
 Memory should be split into three explicit layers. These layers may share a
 backend, but they should not share semantics.
+
+Representation rule: use a uniform `MemoryRecord` envelope for governance,
+retrieval, provenance, confidence, authority, lifecycle, and audit metadata,
+while keeping specialized typed payloads for conversation turns, validated
+traces, planner facts, procedural skills, semantic entities, and external
+knowledge results.
 
 1. **Conversation Memory**
    - Purpose: context continuity and recovery.
@@ -217,6 +226,15 @@ be made first-class and governed.
      - trace/event references
    - This should become the shared cognitive state that retrieval, planning,
      execution, reflection, and novelty operate against.
+   - Current status: `WorkingMemoryState` exists with explicit planner-fact
+     hydration rules. `KortexAgent.run` now creates one per request, records
+     extraction/task/entity context, promotes validated hydrated facts into
+     active planner state, tracks planner tier, records trace references,
+     applies declared action effects after execution, emits a typed
+     `ValidatedTracePayload` memory record, and returns it on `AgentRunResult`.
+     The orchestrator and scenario demo also project declared action effects
+     into working memory. Remaining work is persistent working-memory snapshots,
+     broader runtime APIs, and Graphiti persistence for typed records.
 
 3. **Metacognition**
    - Current offline form: sleep reflection over traces to synthesize reusable

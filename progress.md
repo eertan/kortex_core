@@ -7,11 +7,14 @@ Kortex Core has a working MVP skeleton for deterministic agent execution:
 - structured extractor schemas
 - split HTN/classical planning spine
 - YAML domain bootstrap and validation
+- named intent bindings for order-independent task/goal parameters
 - explicit plugin registries
 - execution driver with approval HITL
 - top-level agent loop
 - structured tracing
 - explicit memory fact hydration with Kuzu support
+- uniform memory record envelope, runtime working-memory state wiring, and
+  validated trace record writeback
 - macro chunking with inferred skill preconditions/effects
 - provider-neutral novelty branch
 - sleep reflection scaffold
