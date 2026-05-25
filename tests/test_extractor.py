@@ -5,8 +5,9 @@ from kortex.extractor.client import GeminiExtractor
 from kortex.extractor.models import HTNLaunchPad, ClarificationRequired
 
 def test_extractor_initialization():
-    os.environ["GEMINI_API_KEY"] = "fake-key"
-    extractor = GeminiExtractor(model_name="gemini-3.1-pro-preview")
+    os.environ.pop("GEMINI_API_KEY", None)
+    os.environ["GOOGLE_AI_API_KEY"] = "fake-key"
+    extractor = GeminiExtractor()
     assert extractor.api_key == "fake-key"
     assert extractor.model_name == "gemini-3.1-pro-preview"
 

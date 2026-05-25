@@ -24,24 +24,33 @@ class GeminiExtractor:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-2.5-flash"
+        model_name: str | None = None,
     ) -> None:
         """
         Initialize the GeminiExtractor.
 
         Args:
             api_key: Google GenAI API key. If not provided, it will be loaded from
-                     the GEMINI_API_KEY environment variable.
+                     GOOGLE_AI_API_KEY, GOOGLE_API_KEY, or GEMINI_API_KEY.
             model_name: The name of the Gemini model to use for extraction.
         """
-        self.api_key: str = api_key or os.environ.get("GEMINI_API_KEY", "")
+        self.api_key: str = (
+            api_key
+            or os.environ.get("GOOGLE_AI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("GEMINI_API_KEY")
+            or ""
+        )
         if not self.api_key:
             raise ValueError(
                 "API key must be provided either as an argument or via the "
-                "GEMINI_API_KEY environment variable."
+                "GOOGLE_AI_API_KEY, GOOGLE_API_KEY, or GEMINI_API_KEY environment variable."
             )
         
-        self.model_name: str = model_name
+        self.model_name: str = model_name or os.environ.get(
+            "KORTEX_GEMINI_MODEL",
+            "gemini-3.1-pro-preview",
+        )
         
         # Initialize the underlying google-genai client and patch it with instructor
         base_client = genai.Client(api_key=self.api_key)

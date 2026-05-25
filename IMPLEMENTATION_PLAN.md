@@ -70,6 +70,18 @@ Natural language request
 - [x] Manifest-level `intent_bindings` map named extractor parameters into HTN
   task invocations or classical fluent goals, so runtime planning no longer
   depends on positional `args` for configured domains.
+- [x] `InteractionSession` shell above `KortexAgent`:
+  - persists user/assistant turns as `ConversationMemoryPayload` records
+  - applies deterministic interaction policy before task execution
+  - routes allowed task turns into the agent loop
+  - re-runs pending tasks with the original prompt plus clarification answers
+  - runs a conservative pre-response guard to prevent execution overclaims
+- [x] Optional `GeminiInteractionInterpreter`:
+  - strict `InteractionInterpretation` schema
+  - defaults to `gemini-3.1-pro-preview`
+  - reads `GOOGLE_AI_API_KEY`, `GOOGLE_API_KEY`, or `GEMINI_API_KEY`
+  - interprets/classifies turns but has no execution, approval, or planner-fact
+    authority
 - [x] Driver-level traces for action preparation, success, failure, and HITL
   approval decisions.
 

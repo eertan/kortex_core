@@ -37,6 +37,10 @@ Core modules:
   should inject a registry per runtime/domain.
 - `kortex.agent`: top-level request loop that composes extraction, memory,
   bootstrap, planning, execution, tracing, and memory writeback.
+- `kortex.interaction`: conversation/session shell that persists user and
+  assistant turns, applies deterministic interaction policy, routes allowed
+  task turns into `KortexAgent`, records clarification answers, and runs a
+  conservative pre-response guard.
 - `kortex.tracing`: structured in-memory trace events.
 - `kortex.memory`: explicit planner facts, Kuzu-backed fact store, state
   hydration, Graphiti episode manager, and sleep reflection.
@@ -87,6 +91,35 @@ Kortex supports two HITL categories:
 Trace events cover request receipt, extraction, clarification pauses, memory
 hydration, domain bootstrap, goal creation, plan creation, per-action execution,
 approval decisions, failures, and completion.
+
+## Interaction Layer
+
+`InteractionSession` sits above `KortexAgent`. It is intentionally not a
+freeform autonomous LLM controller. The interaction layer:
+
+- writes conversation turns as typed `ConversationMemoryPayload` records
+- blocks known unsafe directives before task execution
+- distinguishes conversation-only turns from task-like turns
+- delegates allowed task turns to `KortexAgent`
+- resumes pending clarification by re-running `KortexAgent` with the original
+  prompt plus the clarification answer
+- uses `PreResponseGuard` to prevent overclaiming, such as saying execution
+  completed when the agent only reached clarification or impasse
+
+`GeminiInteractionInterpreter` is the optional LLM interpreter for this layer.
+It uses `InteractionInterpretation` as a strict structured output schema and
+defaults to `gemini-3.1-pro-preview`. API keys are read from
+`GOOGLE_AI_API_KEY`, `GOOGLE_API_KEY`, or `GEMINI_API_KEY`. The interpreter is
+not allowed to execute, approve, mutate planner facts, or decide safety.
+
+The intended split is:
+
+```text
+conversation model = interpreter/narrator
+interaction policy = deterministic gatekeeper
+memory adapters = typed persistence/promotion
+KortexAgent = deterministic task runner
+```
 
 ## Memory
 

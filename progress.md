@@ -8,6 +8,8 @@ Kortex Core has a working MVP skeleton for deterministic agent execution:
 - split HTN/classical planning spine
 - YAML domain bootstrap and validation
 - named intent bindings for order-independent task/goal parameters
+- interaction session shell with deterministic policy, Gemini structured
+  interpreter, clarification resumption, and pre-response guard
 - explicit plugin registries
 - execution driver with approval HITL
 - top-level agent loop
