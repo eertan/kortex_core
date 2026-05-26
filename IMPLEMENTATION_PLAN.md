@@ -480,12 +480,12 @@ knowledge used by tasks.
 
 ### F. Config-Aware Interaction Session
 
-Existing `InteractionSession` is a useful shell, but it is not yet wired to
-domain packages. The next interaction step should be a config-aware layer,
-preferably added first as `kortex/configured_interaction.py` to avoid breaking
-the existing session tests.
+Status: initial implementation exists in `kortex/configured_interaction.py`
+with focused tests in `tests/test_configured_interaction.py`. Existing
+`InteractionSession` remains available, while `ConfiguredInteractionSession`
+is the package-driven runtime surface.
 
-Planned responsibilities:
+Implemented responsibilities:
 
 1. **Package Loading**
    - Accept a `DomainPackage` from `DomainPackageLoader`.
@@ -518,36 +518,38 @@ Planned responsibilities:
      choose planner actions, approve actions, or mutate planner truth.
 
 5. **Response Rendering**
-   - Build `ResponseFrame` objects from validated runtime data:
-     - clarification request
-     - planner impasse
-     - optimizer decision
-     - HITL approval/denial
-     - successful completion
-   - Render through `ResponseRenderer`.
-   - Use templates for policy-critical messages and guarded narration for
-     summaries/explanations.
-   - Run post-render guards to prevent overclaims such as confirmed booking or
-     completed execution before those facts exist.
+   - Configured out-of-domain responses are rendered through
+     `ResponseRenderer`.
+   - Optimizer-backed plugins can return `OptimizationExecutionOutput`; the
+     configured session records the decision and renders the configured
+     optimizer summary before HITL approval.
+   - Execution responses are conservative deterministic strings for now.
+   - Remaining work: build richer `ResponseFrame` objects for clarification,
+     planner impasse, HITL approval/denial, and successful completion.
 
 6. **Memory and Trace**
    - Persist conversation turns as `ConversationMemoryPayload`.
-   - Reference retrieved external option/knowledge records without promoting
-     them to planner facts.
-   - Store optimizer decisions as `OptimizationDecisionPayload`.
-   - Preserve trace stages in the order:
-     `conversation -> intent frame -> clarification or planning -> optimizer ->
-     response -> HITL -> execution`.
+   - Preserve trace stages for intent frame construction, planning, execution,
+     and HITL pause states.
+   - HITL approval state is now session-owned: configured execution pauses
+     before an approval-gated primitive, stores the pending plan position, and
+     resumes or denies from a later user turn without replanning.
+   - Structured optimizer outputs are captured as
+     `OptimizationDecisionPayload` memory records.
+   - Remaining work: make external option-memory writeback fully generic
+     instead of travel-demo-specific.
 
-Initial travel interaction scenario should cover:
+Initial travel interaction tests cover:
 
 - greeting/conversation-only turn
 - out-of-domain refusal
 - missing origin/budget clarification
 - clarification answer and resumption
-- complete travel planning run
-- optimizer summary before HITL
-- approval and denial branches
+- travel planning run through planner/executor until HITL approval is required
+- approval branch resumes the pending plan and can complete after multiple
+  gated actions
+- denial branch stops before the gated primitive
+- optimizer summary before HITL through the generic configured session
 
 Open implementation choice: whether to adapt the existing `InteractionSession`
 after this layer stabilizes, or keep `ConfiguredInteractionSession` as the main

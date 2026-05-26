@@ -85,6 +85,16 @@ class OptimizationResult(BaseModel):
     policy_version: str = "weighted_scorer_v1"
 
 
+class OptimizationExecutionOutput(BaseModel):
+    """Structured plugin output for optimizer-backed primitive actions."""
+
+    message: str
+    result: OptimizationResult
+    response_type: str = "optimizer_summary"
+    response_facts: dict[str, Any] = Field(default_factory=dict)
+    subject_ids: list[str] = Field(default_factory=list)
+
+
 class KortexOptimizer:
     """Deterministic optimizer for candidate choices and bundles."""
 
@@ -246,7 +256,12 @@ class KortexOptimizer:
         bundle: list[OptimizationCandidate],
         attributes: dict[str, Any],
         feasible: list[tuple[list[OptimizationCandidate], dict[str, Any]]],
-    ) -> tuple[list[OptimizationCandidate], dict[str, Any], float, list[OptimizationScoreBreakdown]]:
+    ) -> tuple[
+        list[OptimizationCandidate],
+        dict[str, Any],
+        float,
+        list[OptimizationScoreBreakdown],
+    ]:
         """Score one feasible bundle against soft objectives."""
         breakdown: list[OptimizationScoreBreakdown] = []
         total = 0.0

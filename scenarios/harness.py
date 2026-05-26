@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
 from unified_planning.plans import Plan
 
 from kortex.config.bootstrapper import DomainBootstrapper
@@ -69,7 +70,7 @@ class DemoLogger:
         prefix: str = "demo",
     ) -> None:
         """Record a structured scenario event and print it."""
-        event_payload = payload or {}
+        event_payload = _jsonable(payload or {})
         self._require_current().events.append(
             {
                 "stage": stage,
@@ -105,8 +106,9 @@ class DemoLogger:
 
     def record_results(self, results: list[Any]) -> None:
         """Record and print physical execution results."""
-        self._require_current().results = results
-        self.note(f"Results: {json.dumps(results)}")
+        jsonable_results = _jsonable(results)
+        self._require_current().results = jsonable_results
+        self.note(f"Results: {json.dumps(jsonable_results)}")
 
     def note(self, message: str) -> None:
         """Append and print a human-readable scenario note."""
@@ -121,9 +123,9 @@ class DemoLogger:
                 "scenario": log.scenario,
                 "summary": log.summary,
                 "domain_path": log.domain_path,
-                "events": log.events,
+                "events": _jsonable(log.events),
                 "plan": log.plan,
-                "results": log.results,
+                "results": _jsonable(log.results),
                 "notes": log.notes,
             }
             for log in self.scenario_logs
@@ -208,3 +210,16 @@ def execute_plan_with_logging(
         )
     logger.record_results(results)
     return results
+
+
+def _jsonable(value: Any) -> Any:
+    """Convert Pydantic and nested runtime values into JSON-safe data."""
+    if isinstance(value, BaseModel):
+        return value.model_dump()
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, tuple):
+        return [_jsonable(item) for item in value]
+    return value

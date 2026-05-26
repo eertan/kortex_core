@@ -118,10 +118,17 @@ class IntentFrameBuilder:
         """Normalize one slot into a planner-facing value."""
         slot_spec = spec.slots[slot_name]
         if slot_spec.normalize_to_object is None:
+            if isinstance(value, str):
+                return self._canonical_object_string(value)
             return value
         normalized = slot_spec.normalize_to_object
+        replacement_value = (
+            self._numeric_string(value)
+            if slot_spec.slot_type in {"integer", "money"}
+            else value
+        )
         replacements = {
-            "value": value,
+            "value": replacement_value,
             "amount": self._numeric_string(value),
         }
         for key, replacement in replacements.items():
@@ -157,3 +164,7 @@ class IntentFrameBuilder:
         text = str(value)
         digits = "".join(char for char in text if char.isdigit())
         return digits or text
+
+    def _canonical_object_string(self, value: str) -> str:
+        """Normalize free-text object-like slot values into conventional keys."""
+        return value.strip().lower().replace(" ", "_").replace("-", "_")

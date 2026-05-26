@@ -89,3 +89,31 @@ def test_intent_frame_builder_uses_default_slot_values() -> None:
     assert isinstance(result, IntentFrame)
     assert result.slots["style"] == "relaxed"
     assert result.normalized_parameters["style"] == "relaxed"
+
+
+def test_intent_frame_builder_canonicalizes_object_like_strings() -> None:
+    """Human text slot values should converge to planner object keys."""
+    package = DomainPackageLoader().load(TRAVEL_PACKAGE)
+    assert package.intents is not None
+    builder = IntentFrameBuilder(package.intents)
+
+    result = builder.build(
+        "plan_trip",
+        {
+            "origin": "Boston",
+            "destination": "Tokyo",
+            "duration_days": "3 days",
+            "travel_window": "next week",
+            "budget": "2000 dollars",
+        },
+    )
+
+    assert isinstance(result, IntentFrame)
+    assert result.normalized_parameters == {
+        "origin": "boston",
+        "destination": "tokyo",
+        "duration_days": "duration_3_days",
+        "travel_window": "next_week",
+        "budget": "budget_2000",
+        "style": "relaxed",
+    }

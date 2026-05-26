@@ -242,6 +242,32 @@ response before HITL approval through `ResponseRenderer`, so user-facing text
 can be LLM-like while remaining constrained by allowed facts and forbidden
 claims.
 
+There is also a conversation-style travel interaction entrypoint around
+`ConfiguredInteractionSession`:
+
+```bash
+.venv/bin/python -m scenarios.travel_interaction_cli --mode scripted --approval approve
+```
+
+Use `--approval deny` to exercise the denial branch, or `--mode interactive`
+to type turns manually. The scripted run writes
+`demo_logs/travel_interaction_latest.json` and shows greeting, configured
+clarification, optimizer summary, resumable HITL approval, and final
+completion.
+
+For live natural-language extraction, use Gemini through the config-derived
+interpreter:
+
+```bash
+GOOGLE_AI_API_KEY=... .venv/bin/python -m scenarios.travel_interaction_cli \
+  --mode interactive --interpreter gemini
+```
+
+The interpreter uses `intents.yaml` to build its output contract. Gemini may
+only return a turn type, configured intent name, and configured slot/value
+pairs; Kortex still performs slot validation, normalization, planning,
+optimization, HITL, and execution deterministically.
+
 ## Known Limitations
 
 - HTN support uses deterministic method selection and expansion, not full HTN
@@ -257,5 +283,6 @@ claims.
 - Novelty treatment is provider-neutral and testable, but generated code is not
   yet hot-loaded after validation.
 - Mid-execution clarification is not yet a first-class typed yield mechanism.
-- There is no CLI or service wrapper around `KortexAgent` yet.
+- There is no production service wrapper around `KortexAgent` yet. The travel
+  demo has a small CLI around `ConfiguredInteractionSession`.
 - Type hints exist, but the repo does not yet run a strict type checker in CI.

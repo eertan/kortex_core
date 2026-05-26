@@ -25,6 +25,7 @@ from kortex.optimization import (
     KortexOptimizer,
     OptimizationCandidate,
     OptimizationCandidateSet,
+    OptimizationExecutionOutput,
     OptimizationPolicy,
     OptimizationResult,
 )
@@ -283,10 +284,25 @@ def build_registry(
                     "text": response_result.text,
                 },
             )
-        return (
+        selected_flight = _selected_option_from_ids("flight", result.selected_candidate_ids)
+        selected_hotel = _selected_option_from_ids("hotel", result.selected_candidate_ids)
+        message = (
             "Selected reservation group "
             f"{_selected_bundle_summary(result.selected_candidate_ids)} with "
             f"total cost ${result.selected_attributes.get('total_cost')}."
+        )
+        return OptimizationExecutionOutput(
+            message=message,
+            result=result,
+            response_type="optimizer_summary",
+            response_facts={
+                "flight": selected_flight,
+                "hotel": selected_hotel,
+                "total_cost": result.selected_attributes["total_cost"],
+                "flight_count": len(FLIGHT_OPTIONS),
+                "hotel_count": len(HOTEL_OPTIONS),
+            },
+            subject_ids=[destination],
         )
 
     @registry.register_action("reserve_flight_hold", requires_approval=True)
@@ -583,7 +599,10 @@ def run_travel_demo(log_path: Path, approval: str) -> None:
         if selected_spec.get("subtasks"):
             logger.event(
                 "planning.classical_subtask_ordering",
-                "Selected method declared unordered subtasks; Pyperplan ordered primitive actions from preconditions/effects",
+                (
+                    "Selected method declared unordered subtasks; Pyperplan "
+                    "ordered primitive actions from preconditions/effects"
+                ),
                 {
                     "selected_method": selected_spec["name"],
                     "declared_subtask_order": [

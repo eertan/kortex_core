@@ -450,13 +450,13 @@ Remaining:
 The travel demo should not get a travel-specific chat loop. It should exercise
 a reusable config-aware interaction layer that can serve any domain package.
 
-Proposed module:
+Implemented module:
 
 ```text
 kortex/configured_interaction.py
 ```
 
-Proposed runtime object:
+Implemented runtime object:
 
 ```text
 ConfiguredInteractionSession
@@ -465,13 +465,12 @@ ConfiguredInteractionSession
 Inputs:
 
 - loaded `DomainPackage`
-- `IntentFrameBuilder`
+- package-backed `IntentFrameBuilder`
 - `ResponseRenderer`
-- existing `KortexAgent` or lower-level planner/execution bridge
+- lower-level planner/execution bridge using `domain.yaml` intent bindings
 - optional structured LLM interpreter for mapping user language into intent
   names and raw slots
-- memory sink for conversation, optimizer decisions, traces, and external
-  option records
+- memory sink for conversation records
 
 Turn flow:
 
@@ -485,8 +484,8 @@ user turn
   -> if missing slots: return configured clarification
   -> if complete: create planner goal through domain.yaml intent_bindings
   -> run planner/executor/optimizer
-  -> render response through responses.yaml and ResponseRenderer
-  -> persist trace and memory records
+  -> render refusal through responses.yaml and conservative execution responses
+  -> persist trace and conversation memory records
 ```
 
 Required behavior for travel:
@@ -508,8 +507,11 @@ Required behavior for travel:
    - normalizes values into planner objects
 5. Execution:
    - planner uses HTN method selection and Pyperplan ordering
-   - optimizer summary is rendered before HITL
-   - HITL approval/denial is reflected in final response
+   - structured optimizer output records memory and renders a summary before
+     HITL
+   - execution pauses cleanly when a HITL gate is reached
+   - approval resumes from the stored plan position without replanning
+   - denial stops before the gated primitive and records HITL denial state
 
 Important policy:
 
