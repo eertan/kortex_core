@@ -55,12 +55,20 @@ class TravelDemoNarrator:
         """Return a natural response using only frame facts."""
         del policy
         facts = frame.facts
+        total_cost = facts["total_cost"]
+        budget_limit = facts.get("budget_limit")
+
+        if budget_limit is not None and total_cost <= budget_limit:
+            budget_status = "and it stays within your budget"
+        else:
+            budget_status = "though it exceeds your budget"
+
         return (
             f"I found {facts['flight_count']} flight options and "
             f"{facts['hotel_count']} hotel options. The best fit is "
             f"{facts['flight']['name']} with {facts['hotel']['name']} in "
             f"{facts['hotel']['neighborhood']}. The estimated bundle total is "
-            f"${facts['total_cost']}, and it stays within your budget. I can "
+            f"${facts['total_cost']}, {budget_status}. I can "
             "ask for approval before placing refundable holds."
         )
 
@@ -274,6 +282,7 @@ def build_registry(
                 package=package,
                 result=result,
                 narrator=narrator or TravelDemoNarrator(),
+                budget_limit=budget_limit,
             )
             logger.event(
                 "response.optimizer_summary",
@@ -421,21 +430,30 @@ def _render_optimizer_summary(
     package: DomainPackage,
     result: OptimizationResult,
     narrator: ResponseNarrator,
-) -> object:
+    budget_limit: int,
+) -> ResponseRenderResult:
     """Render a guarded natural summary of the optimizer decision."""
     selected_flight = _selected_option_from_ids("flight", result.selected_candidate_ids)
     selected_hotel = _selected_option_from_ids("hotel", result.selected_candidate_ids)
+
+    total_cost = result.selected_attributes["total_cost"]
+    forbidden_claims = ["booking confirmed", "payment processed"]
+    if total_cost > budget_limit:
+        forbidden_claims.append("within your budget")
+        forbidden_claims.append("within budget")
+
     frame = ResponseFrame(
         response_type="optimizer_summary",
         facts={
             "flight": selected_flight,
             "hotel": selected_hotel,
-            "total_cost": result.selected_attributes["total_cost"],
+            "total_cost": total_cost,
             "flight_count": len(FLIGHT_OPTIONS),
             "hotel_count": len(HOTEL_OPTIONS),
+            "budget_limit": budget_limit,
         },
         required_claims=["flight.name", "hotel.name"],
-        forbidden_claims=["booking confirmed", "payment processed"],
+        forbidden_claims=forbidden_claims,
     )
     if package.responses is None:
         raise ValueError("Travel package is missing responses.yaml.")

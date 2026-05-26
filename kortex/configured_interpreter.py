@@ -38,11 +38,11 @@ class ConfiguredInterpreterOutput(BaseModel):
     """LLM output schema for config-aware turn interpretation."""
 
     turn_type: str = Field(
-        description="One of: conversation, task, clarification_answer.",
+        description="One of: conversation, task, clarification_answer, approval_response, correction, change_request, cancel.",
     )
     intent_name: str | None = Field(
         default=None,
-        description="Configured intent name for task or clarification turns.",
+        description="Configured intent name for task, clarification, or correction/change_request turns.",
     )
     slots: list["ConfiguredSlotValue"] = Field(
         default_factory=list,
@@ -50,7 +50,7 @@ class ConfiguredInterpreterOutput(BaseModel):
     )
     response_text: str | None = Field(
         default=None,
-        description="Short response for conversation-only turns.",
+        description="Short response for conversation-only or response turns.",
     )
     candidate_entities: list[str] = Field(default_factory=list)
     candidate_directives: list[str] = Field(default_factory=list)
@@ -60,7 +60,15 @@ class ConfiguredInterpreterOutput(BaseModel):
     @classmethod
     def validate_turn_type(cls, value: str) -> str:
         """Validate the coarse turn type."""
-        allowed = {"conversation", "task", "clarification_answer"}
+        allowed = {
+            "conversation",
+            "task",
+            "clarification_answer",
+            "approval_response",
+            "correction",
+            "change_request",
+            "cancel",
+        }
         if value not in allowed:
             raise ValueError(f"turn_type must be one of {sorted(allowed)}.")
         return value
@@ -240,18 +248,31 @@ class GeminiConfiguredTurnInterpreter:
                 memory_notes=output.memory_notes,
             )
 
-        if intent_name not in catalog.intents:
-            return ConfiguredTurnInterpretation(
-                turn_type="conversation",
-                response_text="I need a configured intent before I can continue.",
-            )
+        if intent_name in catalog.intents:
+            allowed_slots = set(catalog.intents[intent_name].slots)
+            raw_slots = {
+                slot.slot_name: slot.value
+                for slot in output.slots
+                if slot.slot_name in allowed_slots and slot.value != ""
+            }
+        else:
+            if output.turn_type in {
+                "approval_response",
+                "cancel",
+                "correction",
+                "change_request",
+            }:
+                raw_slots = {
+                    slot.slot_name: slot.value
+                    for slot in output.slots
+                    if slot.value != ""
+                }
+            else:
+                return ConfiguredTurnInterpretation(
+                    turn_type="conversation",
+                    response_text="I need a configured intent before I can continue.",
+                )
 
-        allowed_slots = set(catalog.intents[intent_name].slots)
-        raw_slots = {
-            slot.slot_name: slot.value
-            for slot in output.slots
-            if slot.slot_name in allowed_slots and slot.value != ""
-        }
         return ConfiguredTurnInterpretation(
             turn_type=output.turn_type,  # type: ignore[arg-type]
             intent_name=intent_name,

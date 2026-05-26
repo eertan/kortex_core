@@ -112,3 +112,42 @@ def test_response_renderer_rejects_missing_required_fields() -> None:
 
     with pytest.raises(ValueError, match="missing fields"):
         renderer.render(frame, policy)
+
+
+def test_response_renderer_guards_budget_constraint_overclaim() -> None:
+    """The renderer must fallback and reject narration if the narrator falsely claims the budget constraint is met."""
+    budget_limit = 1500
+    total_cost = 1560  # Over budget!
+
+    forbidden_claims = ["booking confirmed"]
+    if total_cost > budget_limit:
+        forbidden_claims.append("within your budget")
+
+    renderer = ResponseRenderer(
+        narrator=FakeNarrator(
+            "Pacific Arc 221 with Yanaka Atelier Stay for $1560, and it stays within your budget."
+        )
+    )
+
+    frame = ResponseFrame(
+        response_type="optimizer_summary",
+        facts={
+            "flight": {"name": "Pacific Arc 221"},
+            "hotel": {"name": "Yanaka Atelier Stay"},
+            "total_cost": total_cost,
+        },
+        forbidden_claims=forbidden_claims,
+    )
+
+    policy = ResponsePolicy(
+        response_type="optimizer_summary",
+        mode="llm_narrated",
+        template="{flight.name} with {hotel.name} costs ${total_cost}.",
+    )
+
+    result = renderer.render(frame, policy)
+
+    assert result.mode_used == "template_fallback"
+    assert result.guard_reason == "Response included forbidden claim 'within your budget'."
+    assert result.text == "Pacific Arc 221 with Yanaka Atelier Stay costs $1560."
+

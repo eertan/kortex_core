@@ -33,7 +33,15 @@ from kortex.spine.planner import HTNMethodTieImpasse, KortexPlanner
 from kortex.tracing import TraceEvent, TraceRecorder
 
 
-ConfiguredTurnType = Literal["conversation", "task", "clarification_answer"]
+ConfiguredTurnType = Literal[
+    "conversation",
+    "task",
+    "clarification_answer",
+    "approval_response",
+    "correction",
+    "change_request",
+    "cancel",
+]
 
 
 class ConfiguredTurnInterpretation(BaseModel):
@@ -145,16 +153,86 @@ class ConfiguredInteractionSession:
             )
 
         if self.pending_plan is not None:
-            approval_result = self._handle_approval_turn(user_text)
-            if approval_result is not None:
-                self.working_memory = approval_result.working_memory
-                return self._conversation_result(
-                    response_text=self._response_for_execution(approval_result),
-                    status=approval_result.status,
-                    execution_result=approval_result,
-                )
+            # Fast-path: check for simple, unambiguous yes/no first to bypass the interpreter
+            normalized = user_text.strip().lower()
+            if normalized in {
+                "y",
+                "yes",
+                "yes please",
+                "approve",
+                "approved",
+                "approve it",
+                "go ahead",
+                "proceed",
+                "n",
+                "no",
+                "no thanks",
+                "deny",
+                "denied",
+                "stop",
+                "cancel",
+            }:
+                approval_result = self._handle_approval_turn(user_text)
+                if approval_result is not None:
+                    self.working_memory = approval_result.working_memory
+                    return self._conversation_result(
+                        response_text=self._response_for_execution(approval_result),
+                        status=approval_result.status,
+                        execution_result=approval_result,
+                    )
 
         interpretation = self._interpret_turn(user_text, working_memory)
+
+        if self.pending_plan is not None:
+            if interpretation.turn_type == "cancel":
+                approval_result = self._deny_pending_approval(user_text)
+                self.working_memory = approval_result.working_memory
+                return self._conversation_result(
+                    response_text="I cancelled the pending holds.",
+                    status=approval_result.status,
+                    execution_result=approval_result,
+                    interpretation=interpretation,
+                )
+            elif interpretation.turn_type in {"correction", "change_request"}:
+                current_slots = {}
+                if working_memory.active_goal is not None and isinstance(working_memory.active_goal, dict):
+                    current_slots = dict(working_memory.active_goal.get("slots", {}))
+                current_slots.update(interpretation.raw_slots)
+                intent_name = (
+                    interpretation.intent_name
+                    or (working_memory.active_goal.get("intent_name") if working_memory.active_goal else None)
+                    or self.pending_intent_name
+                )
+                self._clear_pending_approval()
+                self.pending_plan = None
+                self.pending_bootstrapper = None
+                self.pending_run_id = None
+                self.pending_next_action_index = None
+                self.pending_plan_actions = []
+                self.pending_selected_method = None
+                self.pending_execution_results = []
+                self.pending_rendered_responses = []
+                self.pending_slots = current_slots
+                self.pending_intent_name = intent_name
+
+                self._trace(
+                    str(uuid4()),
+                    working_memory,
+                    "interaction.correction",
+                    "User requested a correction mid-flight; cancelling pending plan and replanning",
+                    {"corrected_slots": current_slots},
+                )
+            else:
+                approval_result = self._handle_approval_turn(user_text)
+                if approval_result is not None:
+                    self.working_memory = approval_result.working_memory
+                    return self._conversation_result(
+                        response_text=self._response_for_execution(approval_result),
+                        status=approval_result.status,
+                        execution_result=approval_result,
+                        interpretation=interpretation,
+                    )
+
         if interpretation.turn_type == "conversation":
             response = interpretation.response_text or self._conversation_fallback()
             return self._conversation_result(
@@ -184,10 +262,14 @@ class ConfiguredInteractionSession:
             )
 
         raw_slots = self._merged_slots(interpretation)
-        frame_or_clarification = self._intent_builder().build(intent_name, raw_slots)
+        frame_or_clarification = self._intent_builder().build(intent_name, raw_slots, self.objects)
         if isinstance(frame_or_clarification, IntentClarification):
             self.pending_intent_name = intent_name
-            self.pending_slots = raw_slots
+            self.pending_slots = {
+                slot_name: value
+                for slot_name, value in raw_slots.items()
+                if slot_name not in frame_or_clarification.missing_slots
+            }
             self.pending_clarification = frame_or_clarification
             working_memory.pending_clarifications.append(
                 frame_or_clarification.model_dump()
@@ -197,29 +279,6 @@ class ConfiguredInteractionSession:
                 status="clarification_required",
                 interpretation=interpretation,
                 clarification=frame_or_clarification,
-            )
-
-        grounding_clarification = self._grounding_clarification(
-            intent_name=intent_name,
-            raw_slots=raw_slots,
-            intent_frame=frame_or_clarification,
-        )
-        if grounding_clarification is not None:
-            self.pending_intent_name = intent_name
-            self.pending_slots = {
-                slot_name: value
-                for slot_name, value in raw_slots.items()
-                if slot_name not in grounding_clarification.missing_slots
-            }
-            self.pending_clarification = grounding_clarification
-            working_memory.pending_clarifications.append(
-                grounding_clarification.model_dump()
-            )
-            return self._conversation_result(
-                response_text=grounding_clarification.question,
-                status="clarification_required",
-                interpretation=interpretation,
-                clarification=grounding_clarification,
             )
 
         self.pending_intent_name = None
@@ -233,6 +292,18 @@ class ConfiguredInteractionSession:
             for value in frame_or_clarification.normalized_parameters.values()
             if isinstance(value, str)
         ]
+
+        # Dynamically register any normalize_to_object parameters into self.objects
+        if self.package.intents is not None and intent_name in self.package.intents.intents:
+            intent_spec = self.package.intents.intents[intent_name]
+            for slot_name, slot_spec in intent_spec.slots.items():
+                if slot_spec.normalize_to_object:
+                    norm_val = frame_or_clarification.normalized_parameters.get(slot_name)
+                    if norm_val and norm_val not in self.objects:
+                        if slot_name == "duration_days":
+                            self.objects[norm_val] = "TripDuration"
+                        elif slot_name == "budget":
+                            self.objects[norm_val] = "Budget"
 
         execution_result = self._execute_intent_frame(frame_or_clarification)
         self.working_memory = execution_result.working_memory
@@ -1017,7 +1088,7 @@ class ConfiguredInteractionSession:
             )
             return f"{prefix}\n\n{response}" if prefix else response
         if result.status == "approval_denied":
-            response = "I stopped before the approval-gated action."
+            response = "I stopped before placing holds. What would you like to change: budget, dates, duration, hotel preference, or destination?"
             return f"{prefix}\n\n{response}" if prefix else response
         if result.status == "tie_impasse":
             return (

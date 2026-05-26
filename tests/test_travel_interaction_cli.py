@@ -59,7 +59,7 @@ async def test_scripted_travel_interaction_denial_stops_before_hold(tmp_path) ->
         "approval_required",
         "approval_denied",
     ]
-    assert "I stopped before the approval-gated action." in turns[-1]["assistant"]
+    assert "I stopped before placing holds. What would you like to change" in turns[-1]["assistant"]
     assert not any(
         "Placed refundable flight hold" in str(result)
         for result in turns[-1]["execution"]
@@ -139,8 +139,9 @@ async def test_country_destination_requires_grounding_city() -> None:
         "clarification_required",
         "clarification_required",
     ]
-    assert "specific city" in turns[-1]["assistant"]
-    assert "japan" in turns[-1]["assistant"].lower()
+    assert "specific city" in turns[0]["assistant"]
+    assert "japan" in turns[0]["assistant"].lower()
+    assert "Where are you going?" in turns[-1]["assistant"]
 
 
 @pytest.mark.asyncio
@@ -159,4 +160,4 @@ async def test_change_of_mind_denies_pending_approval() -> None:
     turns = [entry for entry in transcript if entry["type"] == "turn"]
     assert turns[0]["status"] == "approval_required"
     assert turns[1]["status"] == "approval_denied"
-    assert "stopped before the approval-gated action" in turns[1]["assistant"]
+    assert "I stopped before placing holds. What would you like to change" in turns[1]["assistant"]

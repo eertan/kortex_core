@@ -277,7 +277,7 @@ async def test_configured_session_denial_turn_stops_pending_plan() -> None:
 
     assert first.status == "approval_required"
     assert second.status == "approval_denied"
-    assert "I stopped before the approval-gated action." in second.response_text
+    assert "I stopped before placing holds. What would you like to change" in second.response_text
     assert second.execution_result is not None
     assert not any(
         "Placed refundable flight hold" in str(result)
@@ -285,3 +285,52 @@ async def test_configured_session_denial_turn_stops_pending_plan() -> None:
     )
     assert second.working_memory.hitl_state is not None
     assert second.working_memory.hitl_state["status"] == "denied"
+
+
+@pytest.mark.asyncio
+async def test_configured_session_correction_re_plans_and_re_runs_execution() -> None:
+    """A correction turn during an active HITL pause should cancel the pending plan and trigger a replan."""
+    package = load_travel_package()
+    interpreter = SequencedInterpreter(
+        [
+            ConfiguredTurnInterpretation(
+                turn_type="task",
+                intent_name="plan_trip",
+                raw_slots={
+                    "origin": "boston",
+                    "destination": "tokyo",
+                    "duration_days": 3,
+                    "travel_window": "next_month",
+                    "budget": 2500,
+                    "style": "relaxed",
+                },
+            ),
+            ConfiguredTurnInterpretation(
+                turn_type="correction",
+                intent_name="plan_trip",
+                raw_slots={"duration_days": 5},
+            ),
+        ]
+    )
+    registry = build_registry(package)
+    session = ConfiguredInteractionSession(
+        package=package,
+        objects=TRAVEL_OBJECTS,
+        registry=registry,
+        interpreter=interpreter,
+        interactive_execution=False,
+    )
+
+    first = await session.handle_turn("Plan a trip with flights and hotels")
+    assert first.status == "approval_required"
+    assert first.intent_frame is not None
+    assert first.intent_frame.normalized_parameters["duration_days"] == "duration_3_days"
+
+    second = await session.handle_turn("I changed my mind, make it 5 days please")
+
+    assert second.status == "approval_required"
+    assert second.intent_frame is not None
+    assert second.intent_frame.normalized_parameters["duration_days"] == "duration_5_days"
+    assert second.intent_frame.normalized_parameters["origin"] == "boston"
+    assert second.intent_frame.normalized_parameters["destination"] == "tokyo"
+

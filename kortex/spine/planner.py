@@ -172,8 +172,10 @@ class KortexPlanner:
 
         for fluent in self.classical_problem.fluents:
             local_problem.add_fluent(fluent, default_initial_value=False)
+        bound_object_names = set(bindings.values())
         for obj in self.classical_problem.all_objects:
-            local_problem.add_object(obj)
+            if obj.name in bound_object_names:
+                local_problem.add_object(obj)
         for action_name in sorted(allowed_action_names):
             local_problem.add_action(self.classical_problem.action(action_name))
         for expression in self._initial_expressions.values():
@@ -266,6 +268,10 @@ class KortexPlanner:
                 applicable_specs.append((method_spec, bindings))
 
         if not applicable_specs:
+            if len(candidate_specs) == 1:
+                method_spec = candidate_specs[0]
+                bindings = dict(zip(method_spec["parameter_names"], args))
+                self._validate_htn_preconditions(task_name, method_spec["preconditions"], bindings)
             raise ValueError(f"No applicable HTN method found for task '{task_name}'.")
 
         scored: list[tuple[dict[str, Any], float, list[str]]] = []

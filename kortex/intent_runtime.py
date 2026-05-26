@@ -38,6 +38,7 @@ class IntentFrameBuilder:
         self,
         intent_name: str,
         raw_slots: dict[str, Any],
+        objects: dict[str, str] | None = None,
     ) -> IntentFrame | IntentClarification:
         """Build a canonical intent frame or return a clarification request."""
         if intent_name not in self.catalog.intents:
@@ -45,10 +46,64 @@ class IntentFrameBuilder:
 
         spec = self.catalog.intents[intent_name]
         slots = self._apply_defaults(spec, raw_slots)
+
+        slot_statuses: dict[str, str] = {}
+        normalized: dict[str, Any] = {}
+
+        for slot_name, slot_spec in spec.slots.items():
+            raw_val = slots.get(slot_name)
+            if self._is_missing(raw_val):
+                if slot_spec.required:
+                    slot_statuses[slot_name] = "missing"
+                else:
+                    slot_statuses[slot_name] = "grounded"
+                continue
+
+            # Apply normalization aliases if provided
+            val_str = str(raw_val).strip().lower()
+            if val_str in slot_spec.normalization_aliases:
+                raw_val = slot_spec.normalization_aliases[val_str]
+                slots[slot_name] = raw_val
+
+            norm_val = self._normalize_slot_value(slot_name, raw_val, spec)
+            normalized[slot_name] = norm_val
+
+            # Check slot validation values
+            if slot_spec.values:
+                if norm_val not in slot_spec.values and str(raw_val) not in slot_spec.values:
+                    slot_statuses[slot_name] = "unsupported"
+                    continue
+
+            # Check grounding against planner objects if slot is not integer/money/enum
+            if slot_spec.slot_type not in {"integer", "money", "enum"}:
+                if objects is not None:
+                    if objects.get(norm_val) == slot_spec.slot_type:
+                        slot_statuses[slot_name] = "grounded"
+                    else:
+                        slot_statuses[slot_name] = "unsupported"
+                else:
+                    slot_statuses[slot_name] = "grounded"
+            else:
+                slot_statuses[slot_name] = "grounded"
+
+        unsupported = [
+            slot_name
+            for slot_name in spec.slots
+            if slot_statuses[slot_name] == "unsupported"
+        ]
+        if unsupported:
+            return IntentClarification(
+                intent_name=intent_name,
+                missing_slots=unsupported,
+                question=self._grounding_question_for_unsupported(
+                    spec, unsupported, slots, objects
+                ),
+            )
+
         missing = [
             slot_name
-            for slot_name, slot_spec in spec.slots.items()
-            if slot_spec.required and self._is_missing(slots.get(slot_name))
+            for slot_name in spec.slots
+            if slot_statuses[slot_name] == "missing"
         ]
         if missing:
             return IntentClarification(
@@ -57,15 +112,6 @@ class IntentFrameBuilder:
                 question=self._clarification_question(spec, missing),
             )
 
-        normalized = {
-            slot_name: self._normalize_slot_value(
-                slot_name,
-                slots[slot_name],
-                spec,
-            )
-            for slot_name in spec.slots
-            if slot_name in slots
-        }
         return IntentFrame(
             intent_name=intent_name,
             planner_binding=spec.planner_binding,
@@ -73,6 +119,36 @@ class IntentFrameBuilder:
             normalized_parameters=normalized,
             preference_tokens=self._preference_tokens(spec, slots),
         )
+
+    def _grounding_question_for_unsupported(
+        self,
+        spec: IntentSpec,
+        unsupported_slots: list[str],
+        raw_slots: dict[str, Any],
+        objects: dict[str, str] | None = None,
+    ) -> str:
+        """Build user-facing grounding clarification question for unsupported slots."""
+        questions = []
+        for slot_name in unsupported_slots:
+            slot_spec = spec.slots[slot_name]
+            raw_value = raw_slots.get(slot_name)
+            slot_type = slot_spec.slot_type
+            if slot_name == "destination" and slot_type == "City":
+                q = (
+                    f"I couldn't ground '{raw_value}' to a specific city. "
+                    "What city do you want to visit?"
+                )
+            elif slot_name == "origin" and slot_type == "City":
+                q = (
+                    f"I couldn't ground '{raw_value}' to a supported departure city. "
+                    "What city are you departing from?"
+                )
+            elif slot_spec.clarification:
+                q = f"I couldn't ground '{raw_value}'. {slot_spec.clarification}"
+            else:
+                q = f"I couldn't ground '{raw_value}' for {slot_name}. Can you clarify?"
+            questions.append(q)
+        return " ".join(questions)
 
     def in_scope(self, user_text: str) -> bool:
         """Return whether text appears to match the configured domain scope."""

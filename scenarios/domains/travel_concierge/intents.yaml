@@ -33,6 +33,13 @@ intents:
         slot_type: TravelWindow
         required: true
         clarification: When do you want to travel?
+        normalization_aliases:
+          "two days from now": "in_2_days"
+          "2 days from now": "in_2_days"
+          "2 days later": "in_2_days"
+          "in 2 days": "in_2_days"
+          "two days later": "in_2_days"
+          "leave in 2 days": "in_2_days"
       budget:
         slot_type: money
         required: true

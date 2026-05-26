@@ -117,3 +117,62 @@ def test_intent_frame_builder_canonicalizes_object_like_strings() -> None:
         "budget": "budget_2000",
         "style": "relaxed",
     }
+
+
+def test_intent_frame_builder_grounding_priority_unsupported() -> None:
+    """If a provided slot fails grounding, we should prioritize clarifying it even if other required slots are missing."""
+    package = DomainPackageLoader().load(TRAVEL_PACKAGE)
+    assert package.intents is not None
+    builder = IntentFrameBuilder(package.intents)
+
+    # We pass an objects dict representing the domain inventory
+    objects = {
+        "boston": "City",
+        "tokyo": "City",
+        "next_month": "TravelWindow",
+    }
+
+    # User provides destination='japan' (ungrounded) and style='relaxed'
+    # Required slots 'origin', 'duration_days', 'travel_window', 'budget' are all missing!
+    # Under old logic, it would return a missing clarification for 'origin', 'duration_days', etc.
+    # Under new logic, it must immediately clarify the unsupported 'destination' first!
+    result = builder.build(
+        "plan_trip",
+        {
+            "destination": "japan",
+            "style": "relaxed",
+        },
+        objects=objects,
+    )
+
+    assert isinstance(result, IntentClarification)
+    assert result.missing_slots == ["destination"]
+    assert "I couldn't ground 'japan' to a specific city" in result.question
+
+
+def test_intent_frame_builder_uses_normalization_aliases() -> None:
+    """Slot values should be mapped using normalization_aliases if matched."""
+    package = DomainPackageLoader().load(TRAVEL_PACKAGE)
+    assert package.intents is not None
+
+    # Add an alias to the catalog dynamically for testing
+    spec = package.intents.intents["plan_trip"]
+    spec.slots["destination"].normalization_aliases["japan"] = "tokyo"
+
+    builder = IntentFrameBuilder(package.intents)
+
+    # Now passing 'japan' as destination should map it to 'tokyo' via aliases
+    result = builder.build(
+        "plan_trip",
+        {
+            "origin": "boston",
+            "destination": "japan",
+            "duration_days": 3,
+            "travel_window": "next_month",
+            "budget": 2500,
+        },
+    )
+
+    assert isinstance(result, IntentFrame)
+    assert result.normalized_parameters["destination"] == "tokyo"
+
