@@ -101,6 +101,18 @@ Natural language request
 - [x] `IntraDomainLearner` chunks successful Tier 2 action traces into HTN
   methods with inferred typed parameters, external preconditions, net effects,
   and provenance.
+- [x] Competing HTN method selection:
+  - multiple methods may target the same abstract task
+  - hard preconditions filter applicability
+  - extracted preference tokens and `selection_priority` score candidates
+  - selected method is recorded in working memory and trace payloads
+  - unresolved equal candidates return a typed tie impasse
+- [x] Unordered HTN subtask planning:
+  - `ordered_subtasks` remains fixed procedural expansion
+  - `subtasks` declares unordered primitive milestones
+  - the selected HTN method creates a bounded classical planning problem using
+    only its declared primitive actions
+  - Pyperplan orders those actions from preconditions/effects
 - [x] `SecurityValidator` checks generated Python plugin code.
 - [x] Provider-neutral novelty interface:
   - `NoveltyRequest`
@@ -126,8 +138,28 @@ Implemented scenarios:
 - [x] Scenario 4: execution requires human approval.
 - [x] Scenario 5: total impasse routes to provider-neutral novelty branch.
 - [x] Scenario 6: sleep reflection creates an executable meta-task.
+- [x] Travel concierge demo package:
+  - shared scenario harness
+  - multi-file travel domain package loaded by `DomainPackageLoader`
+  - `domain.yaml` planner/HTN manifest
+  - `intents.yaml` interaction intent catalog
+  - `decisions.yaml` optimizer policy catalog
+  - `responses.yaml` guarded response policy catalog
+  - fake travel plugin registry
+  - preference-selected HTN method
+  - unordered subtask ordering through Pyperplan
+  - generic optimizer step for candidate bundle selection
+  - typed optimization-decision memory record
+  - guarded response rendering for optimizer summaries before HITL approval
+  - HITL approval for refundable holds
+  - structured JSON log output
 
-Latest verified test state: `33 passed`.
+Latest full-suite verified test state before current increment: `33 passed`.
+Latest focused verification after domain-package loader integration:
+`10 passed` for `tests/test_domain_package.py`, `tests/test_responses.py`,
+`tests/test_optimizer.py`, and `tests/test_travel_concierge_demo.py`. Legacy
+runner smoke command also passed after harness extraction:
+`.venv/bin/python -m scenarios.run_demo --scenario 1 --log-path demo_logs/scenario_demo_smoke.json`.
 
 ## Remaining Work
 
@@ -428,8 +460,11 @@ knowledge used by tasks.
 
 ### D. Stronger Planning Semantics
 
-- [ ] Decide whether true HTN search is required or deterministic method
-  expansion is enough for the core product.
+- [x] Add first-class competing-method selection for deterministic HTN
+  expansion, including applicability filtering, preference scoring, selected
+  method traceability, and tie impasse reporting.
+- [ ] Decide whether true HTN search is required beyond deterministic
+  competing-method selection.
 - [ ] If true HTN search is required, evaluate a planner that natively supports
   the desired HDDL/HTN features.
 - [ ] Keep Pyperplan fallback deliberately simple, or replace it when domains
@@ -442,6 +477,81 @@ knowledge used by tasks.
 - [ ] Add structured trace export to JSONL.
 - [ ] Add strict type-checking and lint commands.
 - [ ] Add dependency/update policy for Graphiti, Kuzu, Google GenAI, and UPF.
+
+### F. Config-Aware Interaction Session
+
+Existing `InteractionSession` is a useful shell, but it is not yet wired to
+domain packages. The next interaction step should be a config-aware layer,
+preferably added first as `kortex/configured_interaction.py` to avoid breaking
+the existing session tests.
+
+Planned responsibilities:
+
+1. **Package Loading**
+   - Accept a `DomainPackage` from `DomainPackageLoader`.
+   - Use:
+     - `domain.yaml` for planner/HTN bindings
+     - `intents.yaml` for scope, slots, clarification, normalization, and
+       preference tokens
+     - `decisions.yaml` for optimizer policies
+     - `responses.yaml` for deterministic templates and guarded narration
+
+2. **Turn Classification**
+   - Handle conversation-only turns without planner execution.
+   - Enforce domain scope from `intents.yaml`.
+   - Return configured out-of-domain responses via `responses.yaml`.
+   - Keep blocked unsafe directives deterministic.
+
+3. **Intent Frame Construction**
+   - Use `IntentFrameBuilder` to build canonical intent frames.
+   - If required slots are missing, return `IntentClarification` and store
+     pending clarification state.
+   - On clarification answer, merge new slot values with the pending frame and
+     rebuild the frame.
+   - Normalize slot values into planner object names before planning.
+
+4. **Planning/Execution Bridge**
+   - Convert complete `IntentFrame` objects into planner goals through
+     `domain.yaml` `intent_bindings`.
+   - Pass `IntentFrame.preference_tokens` into HTN method selection.
+   - Preserve deterministic separation: LLMs may only interpret/extract, never
+     choose planner actions, approve actions, or mutate planner truth.
+
+5. **Response Rendering**
+   - Build `ResponseFrame` objects from validated runtime data:
+     - clarification request
+     - planner impasse
+     - optimizer decision
+     - HITL approval/denial
+     - successful completion
+   - Render through `ResponseRenderer`.
+   - Use templates for policy-critical messages and guarded narration for
+     summaries/explanations.
+   - Run post-render guards to prevent overclaims such as confirmed booking or
+     completed execution before those facts exist.
+
+6. **Memory and Trace**
+   - Persist conversation turns as `ConversationMemoryPayload`.
+   - Reference retrieved external option/knowledge records without promoting
+     them to planner facts.
+   - Store optimizer decisions as `OptimizationDecisionPayload`.
+   - Preserve trace stages in the order:
+     `conversation -> intent frame -> clarification or planning -> optimizer ->
+     response -> HITL -> execution`.
+
+Initial travel interaction scenario should cover:
+
+- greeting/conversation-only turn
+- out-of-domain refusal
+- missing origin/budget clarification
+- clarification answer and resumption
+- complete travel planning run
+- optimizer summary before HITL
+- approval and denial branches
+
+Open implementation choice: whether to adapt the existing `InteractionSession`
+after this layer stabilizes, or keep `ConfiguredInteractionSession` as the main
+public runtime surface for domain packages.
 
 ## Architectural Non-Negotiables
 

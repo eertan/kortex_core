@@ -1,0 +1,36 @@
+domain: travel_concierge
+decisions:
+  choose_travel_bundle:
+    candidate_sources:
+      - flight_options
+      - hotel_options
+    context:
+      duration_days: slot.duration_days
+      budget_limit: slot.budget
+    output_fact:
+      fluent: reservation_group_selected
+      args: [destination]
+    policy:
+      decision_id: choose_travel_bundle
+      aggregate_fields:
+        hotel_total: product:hotel.nightly_rate*duration_days
+        total_cost: sum:flight.price+hotel_total
+        bundle_preference_fit: sum:flight.preference_fit+hotel.preference_fit
+      constraints:
+        - field: total_cost
+          operator: <=
+          value: 2500
+        - field: flight.tags
+          operator: contains
+          value: refundable
+      objectives:
+        - field: total_cost
+          direction: minimize
+          weight: 0.2
+        - field: bundle_preference_fit
+          direction: maximize
+          weight: 0.4
+        - field: hotel.tags
+          direction: match
+          target: boutique
+          weight: 0.5

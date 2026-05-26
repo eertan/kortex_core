@@ -111,3 +111,62 @@ intent_bindings:
         bootstrapper.load_domain(str(domain_file))
 
     assert "unknown required parameter 'unknown_destination'" in str(exc.value)
+
+
+def test_bootstrapper_rejects_invalid_method_preference_metadata(tmp_path):
+    domain_file = tmp_path / "domain.yaml"
+    domain_file.write_text(
+        """
+domain_name: invalid_domain
+types:
+  - Location
+fluents: {}
+actions:
+  - name: move
+    parameters: { loc: Location }
+    preconditions: []
+    effects: []
+htn_methods:
+  - name: m_invalid
+    target_task: relocate
+    preference_matches: relaxed
+    ordered_subtasks:
+      - ["move", "loc"]
+"""
+    )
+    bootstrapper = DomainBootstrapper(KortexPlanner("invalid_domain"))
+
+    with pytest.raises(DomainManifestError) as exc:
+        bootstrapper.load_domain(str(domain_file))
+
+    assert "preference_matches must be a list of strings" in str(exc.value)
+
+
+def test_bootstrapper_rejects_method_with_ordered_and_unordered_subtasks(tmp_path):
+    domain_file = tmp_path / "domain.yaml"
+    domain_file.write_text(
+        """
+domain_name: invalid_domain
+types:
+  - Location
+fluents: {}
+actions:
+  - name: move
+    parameters: { loc: Location }
+    preconditions: []
+    effects: []
+htn_methods:
+  - name: m_invalid
+    target_task: relocate
+    ordered_subtasks:
+      - ["move", "loc"]
+    subtasks:
+      - ["move", "loc"]
+"""
+    )
+    bootstrapper = DomainBootstrapper(KortexPlanner("invalid_domain"))
+
+    with pytest.raises(DomainManifestError) as exc:
+        bootstrapper.load_domain(str(domain_file))
+
+    assert "cannot declare both ordered_subtasks and subtasks" in str(exc.value)

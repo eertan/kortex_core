@@ -153,8 +153,41 @@ Expected behavior:
 - `InteractionSession` treats this as a task
 - `KortexAgent` extracts named parameters
 - domain `intent_bindings` maps parameters into an HTN task
+- competing HTN methods are filtered by hard preconditions and ranked by
+  extracted preferences such as `style:relaxed` and `overly_touristy`
 - planner detects missing required information if the domain requires origin
   city and budget
+
+Representative method-selection candidates:
+
+```yaml
+htn_methods:
+  - name: m_relaxed_local_trip
+    target_task: plan_trip
+    preference_matches: [relaxed, style:relaxed, overly_touristy]
+    subtasks:
+      - [search_boutique_hotels, destination, budget]
+      - [search_low_density_activities, destination, duration_days]
+      - [assemble_relaxed_itinerary, destination, duration_days]
+
+  - name: m_standard_first_time_trip
+    target_task: plan_trip
+    preference_matches: [first_time, landmarks]
+    subtasks:
+      - [search_hotels, destination, budget]
+      - [search_major_attractions, destination, duration_days]
+      - [assemble_standard_itinerary, destination, duration_days]
+```
+
+If both methods remain equally preferred after precondition filtering and
+preference scoring, Kortex should produce a tie impasse instead of silently
+using manifest order.
+
+For this demo, prefer `subtasks` over `ordered_subtasks` when the order can be
+derived from primitive preconditions and effects. That lets the HTN layer choose
+the strategy while the PDDL/classical planner determines the legal execution
+order inside that strategy. Keep `ordered_subtasks` for learned chunks or
+procedures where sequence is part of the skill itself.
 
 ### Turn 4: Clarification
 
@@ -358,23 +391,131 @@ review.
 - validated trace memory
 - domain boundary enforcement
 
-## Implementation Tasks For Tomorrow
+## Implementation Status
 
-1. Create a travel scenario domain manifest.
-2. Add fake travel plugins with a local registry.
-3. Add an interaction-level scenario runner.
-4. Add tests for:
+Completed:
+
+1. Created a multi-file package at `scenarios/domains/travel_concierge/`:
+   - `domain.yaml`
+   - `intents.yaml`
+   - `decisions.yaml`
+   - `responses.yaml`
+2. Added fake travel plugins in `scenarios/travel_concierge.py`.
+3. Added reusable scenario harness helpers in `scenarios/harness.py`.
+4. Added a travel smoke test for planning, HITL approval, working-memory facts,
+   selected method notes, and structured JSON logs.
+5. Added generic optimization through `KortexOptimizer`:
+   - mock flight and hotel inventories include names, prices, locations,
+     schedule metadata, tags, and preference-fit scores
+   - search plugins record those inventories as `ExternalKnowledgePayload`
+     memory records and working memory references them without promoting them
+     to planner truth
+   - flight and hotel candidate bundles are enumerated from the inventories
+   - hard constraints reject non-refundable or over-budget bundles
+   - weighted objectives score total cost, preference fit, and boutique match
+   - the selected bundle is recorded as an `optimization_decision` memory record
+   - planner truth only sees the promoted symbolic effect
+     `reservation_group_selected(destination)`
+6. Added guarded response rendering:
+   - optimizer summaries can use natural narration through `ResponseRenderer`
+   - forbidden claims such as confirmed booking/payment are blocked
+   - deterministic templates remain available as fallback
+   - travel demo logs `response.optimizer_summary` before HITL approval
+
+Run:
+
+```bash
+.venv/bin/python -m scenarios.travel_concierge --approval y
+```
+
+Remaining:
+
+1. Build a config-aware interaction session, likely in
+   `kortex/configured_interaction.py`, before adding UI.
+2. Add interaction-level travel turns for:
    - greeting/conversation-only turn
    - out-of-domain rejection
    - missing origin/budget clarification
    - clarification resumption
-   - memory-backed recommendation note
-   - HITL approval for holds/bookings
-   - final working-memory facts
-5. Decide how semantic memory is mocked:
-   - seeded `MemoryRecord` entries
-   - fake Graphiti retrieval adapter
-   - simple in-memory semantic preference provider
-6. Refine the travel type system so `duration_days`, `style`, and `budget`
-   are not awkwardly represented as domain object types unless needed.
+3. Replace the current logged memory note with a real semantic-memory retrieval
+   adapter or seeded typed memory records.
+4. Use `intents.yaml` to drive a real interaction-level travel flow rather than
+   the current scripted scenario prompt.
+5. Refine the travel type system so `duration_days`, `style`, and `budget`
+   are not represented as domain object types unless that remains intentional
+   for planner grounding.
 
+## Config-Aware Interaction Session Spec
+
+The travel demo should not get a travel-specific chat loop. It should exercise
+a reusable config-aware interaction layer that can serve any domain package.
+
+Proposed module:
+
+```text
+kortex/configured_interaction.py
+```
+
+Proposed runtime object:
+
+```text
+ConfiguredInteractionSession
+```
+
+Inputs:
+
+- loaded `DomainPackage`
+- `IntentFrameBuilder`
+- `ResponseRenderer`
+- existing `KortexAgent` or lower-level planner/execution bridge
+- optional structured LLM interpreter for mapping user language into intent
+  names and raw slots
+- memory sink for conversation, optimizer decisions, traces, and external
+  option records
+
+Turn flow:
+
+```text
+user turn
+  -> persist conversation memory
+  -> deterministic unsafe-directive check
+  -> domain scope check from intents.yaml
+  -> classify conversation/task/clarification
+  -> build or resume IntentFrame
+  -> if missing slots: return configured clarification
+  -> if complete: create planner goal through domain.yaml intent_bindings
+  -> run planner/executor/optimizer
+  -> render response through responses.yaml and ResponseRenderer
+  -> persist trace and memory records
+```
+
+Required behavior for travel:
+
+1. User greeting:
+   - no planner call
+   - response is friendly
+   - conversation memory is persisted
+2. Out-of-domain request:
+   - no planner call
+   - response uses configured `out_of_domain` response
+3. In-domain incomplete request:
+   - `IntentFrameBuilder` returns `IntentClarification`
+   - pending slots are stored
+   - configured clarification asks for origin and budget
+4. Clarification answer:
+   - merges new slot values into pending state
+   - rebuilds complete `IntentFrame`
+   - normalizes values into planner objects
+5. Execution:
+   - planner uses HTN method selection and Pyperplan ordering
+   - optimizer summary is rendered before HITL
+   - HITL approval/denial is reflected in final response
+
+Important policy:
+
+- LLM/interpreter may only produce intent names and raw slots.
+- Planner truth may only come from validated planner facts and declared action
+  effects.
+- Response narration may only phrase validated facts from `ResponseFrame`.
+- Static templates remain mandatory for refusal, clarification, HITL, and
+  failure cases.

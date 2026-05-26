@@ -30,7 +30,7 @@ from kortex.memory.records import (
 from kortex.memory.working import WorkingMemoryState
 from kortex.plugins.registry import PluginRegistry, registry as default_registry
 from kortex.spine.driver import ExecutionDriver
-from kortex.spine.planner import KortexPlanner
+from kortex.spine.planner import HTNMethodTieImpasse, KortexPlanner
 from kortex.tracing import TraceEvent, TraceRecorder
 
 
@@ -193,7 +193,26 @@ class KortexAgent:
             working_memory=working_memory,
         )
 
-        plan = planner.execute_plan()
+        try:
+            plan = planner.execute_plan()
+        except HTNMethodTieImpasse as exc:
+            working_memory.planner_tier = "tie_impasse"
+            self._trace(
+                run_id,
+                "planning.tie_impasse",
+                "Multiple applicable HTN methods remained equally preferred",
+                {
+                    "task_name": exc.task_name,
+                    "candidate_methods": exc.candidate_methods,
+                },
+                working_memory=working_memory,
+            )
+            return AgentRunResult(
+                status="tie_impasse",
+                extraction=extraction,
+                trace=self._events_for_run(run_id),
+                working_memory=working_memory,
+            )
         if plan is None:
             working_memory.planner_tier = "impasse"
             self._trace(
@@ -209,12 +228,21 @@ class KortexAgent:
                 working_memory=working_memory,
             )
 
+        if planner.last_method_selection is not None:
+            working_memory.selected_method = planner.last_method_selection.selected_method
         action_names = [action_instance.action.name for action_instance in plan.actions]
         self._trace(
             run_id,
             "planning.plan",
             "Planner produced executable plan",
-            {"actions": action_names},
+            {
+                "actions": action_names,
+                "method_selection": (
+                    planner.last_method_selection.__dict__
+                    if planner.last_method_selection is not None
+                    else None
+                ),
+            },
             working_memory=working_memory,
         )
 
@@ -285,7 +313,11 @@ class KortexAgent:
             args = launchpad.task_parameters.get("args", [])
             if not isinstance(args, list):
                 raise TypeError("HTN task parameter 'args' must be a list when provided.")
-            bootstrapper.create_goal({"task": launchpad.root_task_name, "args": args})
+            bootstrapper.create_goal({
+                "task": launchpad.root_task_name,
+                "args": args,
+                "selection_preferences": self._selection_preferences(launchpad.task_parameters),
+            })
             return "htn"
 
         args = launchpad.task_parameters.get("args", [])
@@ -322,7 +354,13 @@ class KortexAgent:
                 str(launchpad.task_parameters[param_name])
                 for param_name in binding.get("args", [])
             ]
-            bootstrapper.create_goal({"task": binding["task"], "args": args})
+            bootstrapper.create_goal({
+                "task": binding["task"],
+                "args": args,
+                "selection_preferences": self._selection_preferences(
+                    launchpad.task_parameters,
+                ),
+            })
             return "htn"
 
         for goal in binding.get("goals", []):
@@ -338,6 +376,42 @@ class KortexAgent:
                 }
             )
         return "classical"
+
+    def _selection_preferences(self, task_parameters: dict[str, Any]) -> list[str]:
+        """Extract deterministic preference tokens from structured task parameters."""
+        tokens: list[str] = []
+        for key, value in task_parameters.items():
+            if key in {"goal", "args", "value"}:
+                continue
+            tokens.extend(self._preference_tokens_for_value(key, value))
+        return list(dict.fromkeys(tokens))
+
+    def _preference_tokens_for_value(self, key: str, value: Any) -> list[str]:
+        """Convert a named task parameter into method-selection preference tokens."""
+        if value is None:
+            return []
+        if isinstance(value, list):
+            tokens: list[str] = []
+            for item in value:
+                tokens.extend(self._preference_tokens_for_value(key, item))
+            return tokens
+        if isinstance(value, dict):
+            tokens = []
+            for nested_key, nested_value in value.items():
+                tokens.extend(self._preference_tokens_for_value(
+                    f"{key}.{nested_key}",
+                    nested_value,
+                ))
+            return tokens
+        normalized_key = self._normalize_preference_token(key)
+        normalized_value = self._normalize_preference_token(value)
+        if key in {"preferences", "preference"}:
+            return [normalized_value]
+        return [normalized_value, f"{normalized_key}:{normalized_value}"]
+
+    def _normalize_preference_token(self, token: Any) -> str:
+        """Normalize preference text for deterministic manifest matching."""
+        return str(token).strip().lower().replace(" ", "_").replace("-", "_")
 
     def _record_execution_episodes(self, plan: Plan, execution: list[Any]) -> None:
         """Append executed primitive steps to memory when a manager is configured."""

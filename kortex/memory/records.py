@@ -19,6 +19,7 @@ class MemoryType(StrEnum):
     PROCEDURAL_SKILL = "procedural_skill"
     SEMANTIC_ENTITY = "semantic_entity"
     EXTERNAL_KNOWLEDGE = "external_knowledge"
+    OPTIMIZATION_DECISION = "optimization_decision"
 
 
 class MemoryScope(StrEnum):
@@ -116,6 +117,21 @@ class ExternalKnowledgePayload(BaseModel):
     may_hydrate_planner: bool = False
 
 
+class OptimizationDecisionPayload(BaseModel):
+    """Auditable optimizer result used by decision and reflection layers."""
+
+    payload_type: Literal[MemoryType.OPTIMIZATION_DECISION] = (
+        MemoryType.OPTIMIZATION_DECISION
+    )
+    decision_id: str
+    selected_candidate_ids: list[str] = Field(default_factory=list)
+    selected_attributes: dict[str, Any] = Field(default_factory=dict)
+    score: float
+    score_breakdown: list[dict[str, Any]] = Field(default_factory=list)
+    rejected: list[dict[str, Any]] = Field(default_factory=list)
+    policy_version: str
+
+
 MemoryPayload = (
     ConversationMemoryPayload
     | PlannerFactPayload
@@ -123,6 +139,7 @@ MemoryPayload = (
     | ProceduralSkillPayload
     | SemanticEntityPayload
     | ExternalKnowledgePayload
+    | OptimizationDecisionPayload
 )
 
 
@@ -160,4 +177,3 @@ class MemoryRecord(BaseModel):
             and self.lifecycle_state
             in {MemoryLifecycleState.VALIDATED, MemoryLifecycleState.PROMOTED}
         )
-

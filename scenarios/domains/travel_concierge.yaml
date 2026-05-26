@@ -1,0 +1,188 @@
+domain_name: travel_concierge
+types:
+  - City
+  - TravelWindow
+  - Budget
+  - TripDuration
+  - TravelStyle
+
+fluents:
+  flight_options_found:
+    signature: { origin: City, destination: City }
+  hotel_options_found:
+    signature: { destination: City }
+  local_experiences_found:
+    signature: { destination: City }
+  itinerary_built:
+    signature: { destination: City }
+  reservation_group_selected:
+    signature: { destination: City }
+  flight_hold_created:
+    signature: { destination: City }
+  hotel_hold_created:
+    signature: { destination: City }
+  trip_plan_ready:
+    signature: { destination: City }
+
+actions:
+  - name: search_flights
+    parameters:
+      origin: City
+      destination: City
+      travel_window: TravelWindow
+      budget: Budget
+    preconditions: []
+    effects:
+      - fluent: flight_options_found
+        args: [origin, destination]
+
+  - name: search_hotels
+    parameters:
+      destination: City
+      budget: Budget
+      style: TravelStyle
+    preconditions: []
+    effects:
+      - fluent: hotel_options_found
+        args: [destination]
+
+  - name: search_local_experiences
+    parameters:
+      destination: City
+      style: TravelStyle
+    preconditions: []
+    effects:
+      - fluent: local_experiences_found
+        args: [destination]
+
+  - name: build_itinerary
+    parameters:
+      destination: City
+      duration_days: TripDuration
+      style: TravelStyle
+    preconditions:
+      - fluent: hotel_options_found
+        args: [destination]
+      - fluent: local_experiences_found
+        args: [destination]
+    effects:
+      - fluent: itinerary_built
+        args: [destination]
+
+  - name: optimize_travel_bundle
+    parameters:
+      origin: City
+      destination: City
+      duration_days: TripDuration
+      budget: Budget
+    preconditions:
+      - fluent: flight_options_found
+        args: [origin, destination]
+      - fluent: hotel_options_found
+        args: [destination]
+    effects:
+      - fluent: reservation_group_selected
+        args: [destination]
+
+  - name: reserve_flight_hold
+    parameters:
+      origin: City
+      destination: City
+    preconditions:
+      - fluent: flight_options_found
+        args: [origin, destination]
+      - fluent: reservation_group_selected
+        args: [destination]
+    effects:
+      - fluent: flight_hold_created
+        args: [destination]
+
+  - name: reserve_hotel_hold
+    parameters:
+      destination: City
+    preconditions:
+      - fluent: reservation_group_selected
+        args: [destination]
+    effects:
+      - fluent: hotel_hold_created
+        args: [destination]
+
+  - name: finalize_trip_plan
+    parameters:
+      destination: City
+    preconditions:
+      - fluent: itinerary_built
+        args: [destination]
+      - fluent: flight_hold_created
+        args: [destination]
+      - fluent: hotel_hold_created
+        args: [destination]
+    effects:
+      - fluent: trip_plan_ready
+        args: [destination]
+
+htn_methods:
+  - name: m_relaxed_local_trip
+    target_task: build_trip_plan
+    parameters:
+      origin: City
+      destination: City
+      duration_days: TripDuration
+      travel_window: TravelWindow
+      budget: Budget
+      style: TravelStyle
+    preference_matches:
+      - relaxed
+      - style:relaxed
+      - boutique
+      - food_markets
+    subtasks:
+      - [finalize_trip_plan, destination]
+      - [reserve_hotel_hold, destination]
+      - [optimize_travel_bundle, origin, destination, duration_days, budget]
+      - [build_itinerary, destination, duration_days, style]
+      - [search_local_experiences, destination, style]
+      - [reserve_flight_hold, origin, destination]
+      - [search_hotels, destination, budget, style]
+      - [search_flights, origin, destination, travel_window, budget]
+
+  - name: m_standard_first_time_trip
+    target_task: build_trip_plan
+    parameters:
+      origin: City
+      destination: City
+      duration_days: TripDuration
+      travel_window: TravelWindow
+      budget: Budget
+      style: TravelStyle
+    preference_matches:
+      - first_time
+      - landmarks
+    subtasks:
+      - [finalize_trip_plan, destination]
+      - [reserve_hotel_hold, destination]
+      - [reserve_flight_hold, origin, destination]
+      - [optimize_travel_bundle, origin, destination, duration_days, budget]
+      - [build_itinerary, destination, duration_days, style]
+      - [search_local_experiences, destination, style]
+      - [search_hotels, destination, budget, style]
+      - [search_flights, origin, destination, travel_window, budget]
+
+intent_bindings:
+  plan_trip:
+    type: task
+    task: build_trip_plan
+    required_parameters:
+      - origin
+      - destination
+      - duration_days
+      - travel_window
+      - budget
+      - style
+    args:
+      - origin
+      - destination
+      - duration_days
+      - travel_window
+      - budget
+      - style

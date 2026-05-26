@@ -156,24 +156,46 @@ class DomainManifestValidator:
 
         for method_def in methods:
             method_name = method_def.get("name", "<unnamed>")
+            preference_matches = method_def.get("preference_matches", [])
+            if (
+                not isinstance(preference_matches, list)
+                or not all(isinstance(item, str) for item in preference_matches)
+            ):
+                raise DomainManifestError(
+                    f"Method '{method_name}' preference_matches must be a list of strings."
+                )
+            selection_priority = method_def.get("selection_priority", 0)
+            if not isinstance(selection_priority, int | float):
+                raise DomainManifestError(
+                    f"Method '{method_name}' selection_priority must be numeric."
+                )
+            ordered_subtasks = method_def.get("ordered_subtasks", [])
+            unordered_subtasks = method_def.get("subtasks", [])
+            if ordered_subtasks and unordered_subtasks:
+                raise DomainManifestError(
+                    f"Method '{method_name}' cannot declare both ordered_subtasks and subtasks."
+                )
+            if not isinstance(ordered_subtasks, list):
+                raise DomainManifestError(
+                    f"Method '{method_name}' ordered_subtasks must be a list when provided."
+                )
+            if not isinstance(unordered_subtasks, list):
+                raise DomainManifestError(
+                    f"Method '{method_name}' subtasks must be a list when provided."
+                )
             method_params = set(method_def.get("parameters", {}).keys())
-            for subtask in method_def.get("ordered_subtasks", []):
-                if not isinstance(subtask, list) or not subtask:
-                    raise DomainManifestError(
-                        f"Method '{method_name}' contains an invalid subtask entry."
+            for section_name, subtask_section in (
+                ("ordered_subtasks", ordered_subtasks),
+                ("subtasks", unordered_subtasks),
+            ):
+                for subtask in subtask_section:
+                    self._validate_method_subtask(
+                        method_name=method_name,
+                        section_name=section_name,
+                        subtask=subtask,
+                        actions=actions,
                     )
-                action_name = subtask[0]
-                if action_name not in actions:
-                    raise DomainManifestError(
-                        f"Method '{method_name}' references unknown action '{action_name}'."
-                    )
-                if len(subtask) > 1 and len(subtask[1:]) != len(actions[action_name]):
-                    raise DomainManifestError(
-                        f"Method '{method_name}' subtask '{action_name}' provides "
-                        f"{len(subtask[1:])} args, but action expects "
-                        f"{len(actions[action_name])}."
-                    )
-                method_params.update(str(arg) for arg in subtask[1:])
+                    method_params.update(str(arg) for arg in subtask[1:])
 
             for section in ("preconditions", "effects"):
                 facts = method_def.get(section, [])
@@ -213,6 +235,30 @@ class DomainManifestValidator:
                     f"Method '{method_name}' {section} references unknown "
                     f"parameter '{arg_name}'."
                 )
+
+    def _validate_method_subtask(
+        self,
+        method_name: str,
+        section_name: str,
+        subtask: Any,
+        actions: dict[str, set[str]],
+    ) -> None:
+        """Validate one method subtask entry against declared primitive actions."""
+        if not isinstance(subtask, list) or not subtask:
+            raise DomainManifestError(
+                f"Method '{method_name}' contains an invalid {section_name} entry."
+            )
+        action_name = subtask[0]
+        if action_name not in actions:
+            raise DomainManifestError(
+                f"Method '{method_name}' references unknown action '{action_name}'."
+            )
+        if len(subtask) > 1 and len(subtask[1:]) != len(actions[action_name]):
+            raise DomainManifestError(
+                f"Method '{method_name}' subtask '{action_name}' provides "
+                f"{len(subtask[1:])} args, but action expects "
+                f"{len(actions[action_name])}."
+            )
 
     def _validate_intent_bindings(
         self,

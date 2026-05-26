@@ -82,12 +82,17 @@ class DomainBootstrapper:
                 param_name: self.types[type_name]
                 for param_name, type_name in method_def.get("parameters", {}).items()
             }
-            subtasks_to_add = []
+            ordered_subtasks_to_add = []
+            declared_subtasks = (
+                method_def.get('ordered_subtasks', [])
+                + method_def.get('subtasks', [])
+            )
             
-            for sub_name in method_def.get('ordered_subtasks', []):
+            for sub_name in declared_subtasks:
                 action = self.planner.problem.action(sub_name[0])
                 subtask_args = [str(arg) for arg in sub_name[1:]]
-                subtasks_to_add.append((action, subtask_args))
+                if sub_name in method_def.get('ordered_subtasks', []):
+                    ordered_subtasks_to_add.append((action, subtask_args))
                 if subtask_args:
                     for action_param, method_param_name in zip(action.parameters, subtask_args):
                         if method_param_name not in method_params:
@@ -115,21 +120,32 @@ class DomainBootstrapper:
             method.set_task(task, *task_args)
             
             # Map subtasks
-            for action, subtask_args in subtasks_to_add:
+            for action, subtask_args in ordered_subtasks_to_add:
                 symbolic_args = subtask_args or [p.name for p in action.parameters]
                 action_args = [method.parameter(p_name) for p_name in symbolic_args]
                 method.add_subtask(action, *action_args)
                 
             self.planner.register_method(method)
             self.planner.register_method_spec(
+                method_name=method_def["name"],
                 target_task=task_name,
                 parameter_names=list(method_params.keys()),
                 ordered_subtasks=method_def.get('ordered_subtasks', []),
+                subtasks=method_def.get('subtasks', []),
+                subtask_effects={
+                    action_name: self.action_specs[action_name].get("effects", [])
+                    for action_name in {
+                        str(subtask[0])
+                        for subtask in method_def.get("subtasks", [])
+                    }
+                },
                 preconditions=(
                     method_def.get("preconditions", [])
                     if isinstance(method_def.get("preconditions", []), list)
                     else []
                 ),
+                preference_matches=method_def.get("preference_matches", []),
+                selection_priority=method_def.get("selection_priority", 0),
             )
 
     def load_problem_state(self, objects: dict[str, str], initial_state: list[dict[str, Any]]):
@@ -158,4 +174,8 @@ class DomainBootstrapper:
         elif 'task' in goal_def:
             # We also allow setting an HTN task directly as the goal
             args = [str(arg) for arg in goal_def.get('args', [])]
-            self.planner.add_htn_goal(goal_def['task'], args)
+            selection_preferences = [
+                str(preference)
+                for preference in goal_def.get("selection_preferences", [])
+            ]
+            self.planner.add_htn_goal(goal_def['task'], args, selection_preferences)

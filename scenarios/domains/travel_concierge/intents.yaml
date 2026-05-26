@@ -1,0 +1,50 @@
+domain: travel_concierge
+scope:
+  allowed_topics:
+    - trip planning
+    - flights
+    - hotels
+    - itinerary planning
+    - refundable holds
+  refusal_response: out_of_domain
+
+intents:
+  plan_trip:
+    description: Plan a trip and optionally place approval-gated refundable holds.
+    examples:
+      - Plan a relaxed three day trip to Tokyo next month under 2500 dollars.
+      - I want to go to Japan for three days and stay under my budget.
+    planner_binding: plan_trip
+    slots:
+      origin:
+        slot_type: City
+        required: true
+        clarification: What city are you departing from?
+      destination:
+        slot_type: City
+        required: true
+        clarification: Where are you going?
+      duration_days:
+        slot_type: integer
+        required: true
+        normalize_to_object: duration_{value}_days
+        clarification: How many days should the trip be?
+      travel_window:
+        slot_type: TravelWindow
+        required: true
+        clarification: When do you want to travel?
+      budget:
+        slot_type: money
+        required: true
+        normalize_to_object: budget_{amount}
+        clarification: What budget should I stay within?
+      style:
+        slot_type: enum
+        required: false
+        default: relaxed
+        values: [relaxed, standard, luxury, budget]
+    preference_tokens:
+      - slot: style
+        format: "style:{value}"
+      - literal: boutique
+      - literal: food_markets

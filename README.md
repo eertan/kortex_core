@@ -61,7 +61,13 @@ Kortex currently uses three resolution tiers:
 
 1. **Tier 1: Direct HTN method expansion**
    Declared `htn_methods` in the domain manifest expand into primitive action
-   plans without involving a search planner.
+   plans. Multiple methods may target the same abstract task; Kortex filters
+   them by symbolic preconditions, scores applicable candidates with extracted
+   preference tokens and `selection_priority`, records the selected method in
+   working memory, and raises a traceable tie impasse when no deterministic
+   winner exists. Methods can use `ordered_subtasks` for fixed procedural
+   expansion, or `subtasks` for unordered primitive milestones that Pyperplan
+   orders from preconditions/effects inside the selected method.
 
 2. **Tier 2: Classical fallback planning**
    If the request is a state goal, Kortex uses Pyperplan over a plain classical
@@ -215,11 +221,37 @@ driver action, HITL decision, novelty dry-run, and sleep-reflection result:
 Run one scenario at a time with `--scenario 1` through `--scenario 6`. The demo
 writes structured logs to `demo_logs/scenario_demo_latest.json` by default.
 
+The travel concierge demo is packaged as a separate scenario module using the
+shared scenario harness:
+
+```bash
+.venv/bin/python -m scenarios.travel_concierge --approval y
+```
+
+It loads the multi-file domain package at
+`scenarios/domains/travel_concierge/`, including `domain.yaml`,
+`intents.yaml`, `decisions.yaml`, and `responses.yaml`. The demo selects a
+relaxed travel method from preference metadata, lets Pyperplan order unordered
+primitive subtasks, runs the generic optimizer over flight/hotel candidate
+bundles, exercises HITL approval for refundable holds, and writes
+`demo_logs/travel_concierge_latest.json`. The log includes planner events
+(`planning.method_selection`, `planning.classical_subtask_ordering`),
+optimizer events (`optimization.decision`), and a typed
+`optimization_decision` memory record event. It also renders a guarded natural
+response before HITL approval through `ResponseRenderer`, so user-facing text
+can be LLM-like while remaining constrained by allowed facts and forbidden
+claims.
+
 ## Known Limitations
 
-- HTN support is deterministic method expansion, not full HTN search.
+- HTN support uses deterministic method selection and expansion, not full HTN
+  search. Methods can use unordered `subtasks` to invoke bounded classical
+  planning for primitive action ordering.
 - Pyperplan is a simple STRIPS fallback planner; expressive PDDL features are
   intentionally limited.
+- The optimizer currently uses deterministic weighted scoring and hard
+  constraint filtering. More advanced backends such as A*, OR-Tools, numeric
+  planners, or learned policies can be added behind the same decision boundary.
 - Graphiti integration exists, but the production-grade bridge from Graphiti
   episodes into explicit `MemoryFact` updates is not complete.
 - Novelty treatment is provider-neutral and testable, but generated code is not

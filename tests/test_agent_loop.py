@@ -50,11 +50,132 @@ intent_bindings:
     args: [origin, destination]
 """
 
+COMPETING_METHOD_DOMAIN = """
+domain_name: "competing_method_domain"
+types:
+  - City
+fluents:
+  route_prepared:
+    signature: { origin: City, destination: City }
+actions:
+  - name: fast_route
+    parameters: { origin: City, destination: City }
+    preconditions: []
+    effects:
+      - fluent: route_prepared
+        args: [origin, destination]
+  - name: relaxed_route
+    parameters: { origin: City, destination: City }
+    preconditions: []
+    effects:
+      - fluent: route_prepared
+        args: [origin, destination]
+htn_methods:
+  - name: m_fast_route
+    target_task: arrange_route
+    parameters: { origin: City, destination: City }
+    preference_matches: [fast]
+    ordered_subtasks:
+      - ["fast_route", "origin", "destination"]
+  - name: m_relaxed_route
+    target_task: arrange_route
+    parameters: { origin: City, destination: City }
+    preference_matches: [relaxed, style:relaxed]
+    ordered_subtasks:
+      - ["relaxed_route", "origin", "destination"]
+intent_bindings:
+  plan_route:
+    type: task
+    task: arrange_route
+    required_parameters: [origin, destination]
+    args: [origin, destination]
+"""
+
+UNORDERED_SUBTASK_DOMAIN = """
+domain_name: "unordered_subtask_domain"
+types:
+  - City
+fluents:
+  flights_found:
+    signature: { origin: City, destination: City }
+  hotels_found:
+    signature: { destination: City }
+  itinerary_ready:
+    signature: { destination: City }
+actions:
+  - name: assemble_trip
+    parameters: { origin: City, destination: City }
+    preconditions:
+      - fluent: flights_found
+        args: [origin, destination]
+      - fluent: hotels_found
+        args: [destination]
+    effects:
+      - fluent: itinerary_ready
+        args: [destination]
+  - name: search_hotels
+    parameters: { destination: City }
+    preconditions: []
+    effects:
+      - fluent: hotels_found
+        args: [destination]
+  - name: search_flights
+    parameters: { origin: City, destination: City }
+    preconditions: []
+    effects:
+      - fluent: flights_found
+        args: [origin, destination]
+htn_methods:
+  - name: m_plan_trip_unordered
+    target_task: plan_trip
+    parameters: { origin: City, destination: City }
+    subtasks:
+      - ["assemble_trip", "origin", "destination"]
+      - ["search_hotels", "destination"]
+      - ["search_flights", "origin", "destination"]
+intent_bindings:
+  plan_travel:
+    type: task
+    task: plan_trip
+    required_parameters: [origin, destination]
+    args: [origin, destination]
+"""
+
 
 @agent_loop_registry.register_action("agent_move")
 def agent_move(frm: str, to: str) -> str:
     """Test plugin for agent-loop planning and execution."""
     return f"agent moved from {frm} to {to}"
+
+
+@agent_loop_registry.register_action("fast_route")
+def fast_route(origin: str, destination: str) -> str:
+    """Test plugin for a fast route candidate."""
+    return f"fast route from {origin} to {destination}"
+
+
+@agent_loop_registry.register_action("relaxed_route")
+def relaxed_route(origin: str, destination: str) -> str:
+    """Test plugin for a relaxed route candidate."""
+    return f"relaxed route from {origin} to {destination}"
+
+
+@agent_loop_registry.register_action("search_flights")
+def search_flights(origin: str, destination: str) -> str:
+    """Test plugin for flight search."""
+    return f"searched flights from {origin} to {destination}"
+
+
+@agent_loop_registry.register_action("search_hotels")
+def search_hotels(destination: str) -> str:
+    """Test plugin for hotel search."""
+    return f"searched hotels in {destination}"
+
+
+@agent_loop_registry.register_action("assemble_trip")
+def assemble_trip(origin: str, destination: str) -> str:
+    """Test plugin for itinerary assembly."""
+    return f"assembled trip for {destination}"
 
 
 class FakeExtractor:
@@ -290,3 +411,117 @@ async def test_agent_loop_uses_named_task_binding_without_ordered_args(tmp_path)
         "destination": "vault",
         "origin": "lobby",
     }
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_selects_applicable_htn_method_by_preferences(tmp_path):
+    domain_file = tmp_path / "domain.yaml"
+    domain_file.write_text(COMPETING_METHOD_DOMAIN)
+    extractor = FakeExtractor(
+        HTNLaunchPad(
+            root_task_name="plan_route",
+            task_parameters={
+                "origin": "boston",
+                "destination": "rome",
+                "style": "relaxed",
+            },
+        )
+    )
+    agent = KortexAgent(
+        extractor=extractor,
+        driver=ExecutionDriver(interactive=False, registry=agent_loop_registry),
+        registry=agent_loop_registry,
+    )
+    context = AgentDomainContext(
+        domain_path=str(domain_file),
+        objects={"boston": "City", "rome": "City"},
+        available_tasks=["plan_route"],
+    )
+
+    result = await agent.run("Plan a relaxed route from Boston to Rome.", context)
+
+    assert result.status == "success"
+    assert result.execution == ["relaxed route from boston to rome"]
+    assert result.working_memory is not None
+    assert result.working_memory.selected_method == "m_relaxed_route"
+    plan_event = next(event for event in result.trace if event.stage == "planning.plan")
+    assert plan_event.payload["method_selection"]["selected_method"] == "m_relaxed_route"
+    assert plan_event.payload["method_selection"]["scores"] == {
+        "m_fast_route": 0.0,
+        "m_relaxed_route": 2.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_reports_tie_impasse_for_equal_htn_methods(tmp_path):
+    domain_file = tmp_path / "domain.yaml"
+    domain_file.write_text(COMPETING_METHOD_DOMAIN)
+    extractor = FakeExtractor(
+        HTNLaunchPad(
+            root_task_name="plan_route",
+            task_parameters={
+                "origin": "boston",
+                "destination": "rome",
+            },
+        )
+    )
+    agent = KortexAgent(
+        extractor=extractor,
+        driver=ExecutionDriver(interactive=False, registry=agent_loop_registry),
+        registry=agent_loop_registry,
+    )
+    context = AgentDomainContext(
+        domain_path=str(domain_file),
+        objects={"boston": "City", "rome": "City"},
+        available_tasks=["plan_route"],
+    )
+
+    result = await agent.run("Plan a route from Boston to Rome.", context)
+
+    assert result.status == "tie_impasse"
+    assert result.execution == []
+    assert result.working_memory is not None
+    assert result.working_memory.planner_tier == "tie_impasse"
+    tie_event = next(event for event in result.trace if event.stage == "planning.tie_impasse")
+    assert tie_event.payload == {
+        "task_name": "arrange_route",
+        "candidate_methods": ["m_fast_route", "m_relaxed_route"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_orders_unordered_htn_subtasks_with_classical_planner(tmp_path):
+    domain_file = tmp_path / "domain.yaml"
+    domain_file.write_text(UNORDERED_SUBTASK_DOMAIN)
+    extractor = FakeExtractor(
+        HTNLaunchPad(
+            root_task_name="plan_travel",
+            task_parameters={
+                "origin": "boston",
+                "destination": "tokyo",
+            },
+        )
+    )
+    agent = KortexAgent(
+        extractor=extractor,
+        driver=ExecutionDriver(interactive=False, registry=agent_loop_registry),
+        registry=agent_loop_registry,
+    )
+    context = AgentDomainContext(
+        domain_path=str(domain_file),
+        objects={"boston": "City", "tokyo": "City"},
+        available_tasks=["plan_travel"],
+    )
+
+    result = await agent.run("Plan a three day trip from Boston to Tokyo.", context)
+
+    assert result.status == "success"
+    assert result.working_memory is not None
+    assert result.working_memory.selected_method == "m_plan_trip_unordered"
+    assert result.execution[-1] == "assembled trip for tokyo"
+    assert set(result.execution[:2]) == {
+        "searched flights from boston to tokyo",
+        "searched hotels in tokyo",
+    }
+    plan_event = next(event for event in result.trace if event.stage == "planning.plan")
+    assert plan_event.payload["actions"][-1] == "assemble_trip"

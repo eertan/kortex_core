@@ -1,0 +1,28 @@
+domain: travel_concierge
+responses:
+  optimizer_summary:
+    response_type: optimizer_summary
+    mode: llm_narrated
+    template: >
+      I found {flight_count} flights and {hotel_count} hotels. I selected
+      {flight.name} with {hotel.name}; estimated total is ${total_cost}.
+    fallback_template: >
+      I found {flight_count} flights and {hotel_count} hotels. I selected
+      {flight.name} with {hotel.name}; estimated total is ${total_cost}.
+    forbidden_terms:
+      - booking confirmed
+      - payment processed
+    required_fields:
+      - flight.name
+      - hotel.name
+      - total_cost
+      - flight_count
+      - hotel_count
+    tone: friendly_concise
+
+  out_of_domain:
+    response_type: out_of_domain
+    mode: template
+    template: >
+      I can't handle that in this domain. I can help with trip planning,
+      flights, hotels, itinerary planning, and refundable holds.
