@@ -274,8 +274,28 @@ class ConfiguredInteractionSession:
             working_memory.pending_clarifications.append(
                 frame_or_clarification.model_dump()
             )
+
+            # Use conversational elicitation if narrator supports it
+            response_text = frame_or_clarification.question
+            if self.renderer is not None and getattr(self.renderer, "narrator", None) is not None:
+                narrator = self.renderer.narrator
+                if hasattr(narrator, "narrate_elicitation"):
+                    intent_spec = self.package.intents.intents[intent_name]
+                    slot_clarifications = {
+                        slot_name: intent_spec.slots[slot_name].clarification or f"What is your {slot_name}?"
+                        for slot_name in frame_or_clarification.missing_slots
+                    }
+                    try:
+                        response_text = narrator.narrate_elicitation(
+                            intent_name=intent_name,
+                            missing_slots=frame_or_clarification.missing_slots,
+                            slot_clarifications=slot_clarifications,
+                        )
+                    except Exception:
+                        response_text = frame_or_clarification.question
+
             return self._conversation_result(
-                response_text=frame_or_clarification.question,
+                response_text=response_text,
                 status="clarification_required",
                 interpretation=interpretation,
                 clarification=frame_or_clarification,
@@ -293,17 +313,16 @@ class ConfiguredInteractionSession:
             if isinstance(value, str)
         ]
 
-        # Dynamically register any normalize_to_object parameters into self.objects
+        # Dynamically register any extracted slot parameter into self.objects
         if self.package.intents is not None and intent_name in self.package.intents.intents:
             intent_spec = self.package.intents.intents[intent_name]
             for slot_name, slot_spec in intent_spec.slots.items():
-                if slot_spec.normalize_to_object:
-                    norm_val = frame_or_clarification.normalized_parameters.get(slot_name)
-                    if norm_val and norm_val not in self.objects:
-                        if slot_name == "duration_days":
-                            self.objects[norm_val] = "TripDuration"
-                        elif slot_name == "budget":
-                            self.objects[norm_val] = "Budget"
+                norm_val = frame_or_clarification.normalized_parameters.get(slot_name)
+                if norm_val and norm_val not in self.objects:
+                    if slot_name == "duration_days":
+                        self.objects[norm_val] = "TripDuration"
+                    elif slot_name == "budget":
+                        self.objects[norm_val] = "Budget"
 
         execution_result = self._execute_intent_frame(frame_or_clarification)
         self.working_memory = execution_result.working_memory

@@ -211,12 +211,17 @@ async def run_turns(
     get_environment().credits_stream = None
     package = DomainPackageLoader().load(TRAVEL_PACKAGE_PATH)
     memory_sink = TranscriptMemorySink()
+    if interpreter_mode == "gemini":
+        from kortex.responses import GeminiResponseNarrator
+        narrator = GeminiResponseNarrator()
+    else:
+        narrator = TravelDemoNarrator()
     session = ConfiguredInteractionSession(
         package=package,
         objects=TRAVEL_OBJECTS,
         registry=build_registry(package),
         interpreter=_build_interpreter(interpreter_mode),
-        renderer=ResponseRenderer(narrator=TravelDemoNarrator()),
+        renderer=ResponseRenderer(narrator=narrator),
         memory_sink=memory_sink,
         interactive_execution=False,
         session_id="travel_interaction_demo",
@@ -243,12 +248,17 @@ async def run_interactive_travel_conversation(
     get_environment().credits_stream = None
     package = DomainPackageLoader().load(TRAVEL_PACKAGE_PATH)
     memory_sink = TranscriptMemorySink()
+    if interpreter_mode == "gemini":
+        from kortex.responses import GeminiResponseNarrator
+        narrator = GeminiResponseNarrator()
+    else:
+        narrator = TravelDemoNarrator()
     session = ConfiguredInteractionSession(
         package=package,
         objects=TRAVEL_OBJECTS,
         registry=build_registry(package),
         interpreter=_build_interpreter(interpreter_mode),
-        renderer=ResponseRenderer(narrator=TravelDemoNarrator()),
+        renderer=ResponseRenderer(narrator=narrator),
         memory_sink=memory_sink,
         interactive_execution=False,
         session_id="travel_interaction_interactive",

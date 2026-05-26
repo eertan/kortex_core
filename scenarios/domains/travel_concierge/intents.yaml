@@ -40,6 +40,10 @@ intents:
           "in 2 days": "in_2_days"
           "two days later": "in_2_days"
           "leave in 2 days": "in_2_days"
+          "in 3 days": "in_2_days"
+          "3 days later": "in_2_days"
+          "three days later": "in_2_days"
+          "3 days from now": "in_2_days"
       budget:
         slot_type: money
         required: true

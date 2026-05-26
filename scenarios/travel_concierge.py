@@ -310,6 +310,7 @@ def build_registry(
                 "total_cost": result.selected_attributes["total_cost"],
                 "flight_count": len(FLIGHT_OPTIONS),
                 "hotel_count": len(HOTEL_OPTIONS),
+                "budget_limit": budget_limit,
             },
             subject_ids=[destination],
         )
