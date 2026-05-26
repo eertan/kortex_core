@@ -153,25 +153,9 @@ class ConfiguredInteractionSession:
             )
 
         if self.pending_plan is not None:
-            # Fast-path: check for simple, unambiguous yes/no first to bypass the interpreter
+            # Fast-path: check for simple, unambiguous approval turns first.
             normalized = user_text.strip().lower()
-            if normalized in {
-                "y",
-                "yes",
-                "yes please",
-                "approve",
-                "approved",
-                "approve it",
-                "go ahead",
-                "proceed",
-                "n",
-                "no",
-                "no thanks",
-                "deny",
-                "denied",
-                "stop",
-                "cancel",
-            }:
+            if self._is_approval_or_denial_text(normalized):
                 approval_result = self._handle_approval_turn(user_text)
                 if approval_result is not None:
                     self.working_memory = approval_result.working_memory
@@ -281,10 +265,19 @@ class ConfiguredInteractionSession:
                 narrator = self.renderer.narrator
                 if hasattr(narrator, "narrate_elicitation"):
                     intent_spec = self.package.intents.intents[intent_name]
-                    slot_clarifications = {
-                        slot_name: intent_spec.slots[slot_name].clarification or f"What is your {slot_name}?"
-                        for slot_name in frame_or_clarification.missing_slots
-                    }
+                    slot_clarifications = {}
+                    for slot_name in frame_or_clarification.missing_slots:
+                        raw_val = raw_slots.get(slot_name)
+                        if raw_val is not None and raw_val != "":
+                            slot_clarifications[slot_name] = (
+                                f"The user provided '{raw_val}', but we couldn't ground it to a specific supported value. "
+                                f"Politely explain that we couldn't ground '{raw_val}' to a supported value of type {intent_spec.slots[slot_name].slot_type}, "
+                                f"and ask them to specify a supported one (e.g., we support Tokyo for destination city)."
+                            )
+                        else:
+                            slot_clarifications[slot_name] = (
+                                intent_spec.slots[slot_name].clarification or f"What is your {slot_name}?"
+                            )
                     try:
                         response_text = narrator.narrate_elicitation(
                             intent_name=intent_name,
@@ -321,6 +314,8 @@ class ConfiguredInteractionSession:
                 if norm_val and norm_val not in self.objects:
                     if slot_name == "duration_days":
                         self.objects[norm_val] = "TripDuration"
+                    elif slot_name == "travel_window":
+                        self.objects[norm_val] = "TravelWindow"
                     elif slot_name == "budget":
                         self.objects[norm_val] = "Budget"
 
@@ -768,16 +763,7 @@ class ConfiguredInteractionSession:
     ) -> ConfiguredExecutionResult | None:
         """Resume or deny a pending approval-gated action from user text."""
         normalized = user_text.strip().lower()
-        if normalized in {
-            "y",
-            "yes",
-            "yes please",
-            "approve",
-            "approved",
-            "approve it",
-            "go ahead",
-            "proceed",
-        }:
+        if self._is_approval_text(normalized):
             if (
                 self.pending_plan is None
                 or self.pending_bootstrapper is None
@@ -795,28 +781,59 @@ class ConfiguredInteractionSession:
                 selected_method=self.pending_selected_method,
                 approve_first_action=True,
             )
-        if (
-            normalized in {
-                "n",
-                "no",
-                "no thanks",
-                "deny",
-                "denied",
-                "stop",
-                "cancel",
-            }
-            or any(
-                phrase in normalized
-                for phrase in [
-                    "changed my mind",
-                    "change my mind",
-                    "do not approve",
-                    "don't approve",
-                ]
-            )
-        ):
+        if self._is_denial_text(normalized):
             return self._deny_pending_approval(user_text)
         return self._repeat_pending_approval_request()
+
+    def _is_approval_or_denial_text(self, normalized: str) -> bool:
+        """Return whether text is clear enough to bypass LLM interpretation."""
+        return self._is_approval_text(normalized) or self._is_denial_text(normalized)
+
+    def _is_approval_text(self, normalized: str) -> bool:
+        """Return whether text approves the pending gated action."""
+        return normalized in {
+            "y",
+            "yes",
+            "yes please",
+            "approve",
+            "approved",
+            "approve it",
+            "go ahead",
+            "proceed",
+            "sure",
+            "ok",
+            "okay",
+            "yep",
+            "yeah",
+            "fine",
+            "do it",
+        }
+
+    def _is_denial_text(self, normalized: str) -> bool:
+        """Return whether text denies or rejects the pending gated action."""
+        if normalized in {
+            "n",
+            "no",
+            "no thanks",
+            "deny",
+            "denied",
+            "stop",
+            "cancel",
+        }:
+            return True
+        return any(
+            phrase in normalized
+            for phrase in [
+                "changed my mind",
+                "change my mind",
+                "do not approve",
+                "don't approve",
+                "above my budget",
+                "over my budget",
+                "too expensive",
+                "not within budget",
+            ]
+        ) or normalized.startswith("no,")
 
     def _deny_pending_approval(self, user_text: str) -> ConfiguredExecutionResult:
         """Deny and clear a pending approval-gated action."""
@@ -1101,10 +1118,7 @@ class ConfiguredInteractionSession:
             response = "Completed the configured request."
             return f"{prefix}\n\n{response}" if prefix else response
         if result.status == "approval_required":
-            response = (
-                "I reached an approval-gated action and need authorization "
-                "before continuing."
-            )
+            response = self._approval_prompt(result.approval_request)
             return f"{prefix}\n\n{response}" if prefix else response
         if result.status == "approval_denied":
             response = "I stopped before placing holds. What would you like to change: budget, dates, duration, hotel preference, or destination?"
@@ -1119,6 +1133,50 @@ class ConfiguredInteractionSession:
         if result.error is not None:
             return f"The request ended with status {result.status}: {result.error}"
         return f"The request ended with status {result.status}."
+
+    def _approval_prompt(self, approval_request: dict[str, Any] | None) -> str:
+        """Return a specific prompt for the pending approval-gated action."""
+        if approval_request is None:
+            return (
+                "I reached an approval-gated action and need authorization "
+                "before continuing."
+            )
+        action_name = str(approval_request.get("action", "approval-gated action"))
+        parameters = approval_request.get("parameters", {})
+        action_label = self._approval_action_label(action_name)
+        parameter_text = self._approval_parameter_text(parameters)
+        if parameter_text:
+            return f"Approve {action_label} for {parameter_text}?"
+        return f"Approve {action_label}?"
+
+    def _approval_action_label(self, action_name: str) -> str:
+        """Return a user-facing label for one approval-gated action."""
+        labels = {
+            "reserve_flight_hold": "placing the refundable flight hold",
+            "reserve_hotel_hold": "placing the refundable hotel hold",
+        }
+        if action_name in labels:
+            return labels[action_name]
+        return action_name.replace("_", " ")
+
+    def _approval_parameter_text(self, parameters: Any) -> str:
+        """Format approval parameters without exposing internal object syntax."""
+        if not isinstance(parameters, dict) or not parameters:
+            return ""
+        origin = parameters.get("origin")
+        destination = parameters.get("destination")
+        if origin and destination:
+            return f"{self._display_value(origin)} to {self._display_value(destination)}"
+        if destination:
+            return self._display_value(destination)
+        return ", ".join(
+            f"{key.replace('_', ' ')} {self._display_value(value)}"
+            for key, value in sorted(parameters.items())
+        )
+
+    def _display_value(self, value: Any) -> str:
+        """Convert internal object keys into compact display text."""
+        return str(value).replace("_", " ").title()
 
     def _conversation_result(
         self,

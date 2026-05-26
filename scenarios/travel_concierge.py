@@ -501,7 +501,7 @@ def run_travel_demo(log_path: Path, approval: str) -> None:
     objects = {
         "boston": "City",
         "tokyo": "City",
-        "next_month": "TravelWindow",
+        "in_30_days": "TravelWindow",
         "budget_2500": "Budget",
         "duration_3_days": "TripDuration",
         "relaxed": "TravelStyle",

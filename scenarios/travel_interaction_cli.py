@@ -38,8 +38,8 @@ TRAVEL_OBJECTS = {
     "new_york": "City",
     "tokyo": "City",
     "in_2_days": "TravelWindow",
-    "next_week": "TravelWindow",
-    "next_month": "TravelWindow",
+    "in_7_days": "TravelWindow",
+    "in_30_days": "TravelWindow",
     "budget_2000": "Budget",
     "budget_2500": "Budget",
     "duration_3_days": "TripDuration",
@@ -160,18 +160,18 @@ class TravelDemoInterpreter:
             return None
         return int(match.group(1))
 
-    def _travel_window(self, normalized: str) -> str | None:
-        """Extract a demo travel window."""
+    def _travel_window(self, normalized: str) -> int | None:
+        """Extract a demo travel window as days from now."""
         if "next week" in normalized:
-            return "next_week"
+            return 7
         if "next month" in normalized:
-            return "next_month"
+            return 30
         match = re.search(r"\b(\d+)\s*day\w*\s+from\s+now\b", normalized)
         if match is not None:
-            return f"in_{match.group(1)}_days"
+            return int(match.group(1))
         match = re.search(r"\b(?:leave|depart|travel)\s+in\s+(\d+)\s*day\w*\b", normalized)
         if match is not None:
-            return f"in_{match.group(1)}_days"
+            return int(match.group(1))
         return None
 
     def _budget(self, normalized: str) -> int | None:
@@ -266,6 +266,7 @@ async def run_interactive_travel_conversation(
     )
     transcript: list[dict[str, Any]] = []
     print("Kortex travel demo. Type 'quit' to exit.")
+    print("kortex> Hello! I'm your Kortex Travel Assistant. I can help you plan a trip and place refundable holds. Where are you thinking of traveling today?")
     while True:
         user_text = input("user> ").strip()
         if user_text.lower() in {"quit", "exit"}:

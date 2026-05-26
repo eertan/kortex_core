@@ -109,8 +109,10 @@ class GeminiResponseNarrator:
             f"The missing details and their contexts are:\n"
             f"{json.dumps(slot_clarifications, indent=2)}\n\n"
             f"Draft a warm, polite, and conversational response (1-2 sentences) "
-            f"acknowledging the request and asking the user for these missing "
-            f"details. Do NOT ask them like a list. Make it sound like a natural conversation."
+            f"asking the user for these missing details.\n\n"
+            f"CRITICAL INSTRUCTIONS:\n"
+            f"1. AVOID repetitive greetings, opening remarks, or introductory pleasantries like 'I'd love to help you plan...', 'I am excited to help you...', or 'To get started...'. Get straight to asking for the details in a direct, natural, and friendly way.\n"
+            f"2. Do NOT ask them like a list. Make it sound like a natural, flowing conversation."
         )
         response = self.client.models.generate_content(
             model=self.model_name,

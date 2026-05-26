@@ -20,7 +20,7 @@ class IntentSlotSpec(BaseModel):
     default: Any | None = None
     clarification: str | None = None
     values: list[str] = Field(default_factory=list)
-    normalization_aliases: dict[str, str] = Field(default_factory=dict)
+    normalization_aliases: dict[str, Any] = Field(default_factory=dict)
     normalize_to_object: str | None = None
 
 

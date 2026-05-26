@@ -21,7 +21,7 @@ TRAVEL_PACKAGE = Path("scenarios/domains/travel_concierge")
 TRAVEL_OBJECTS = {
     "boston": "City",
     "tokyo": "City",
-    "next_month": "TravelWindow",
+    "in_30_days": "TravelWindow",
     "budget_2500": "Budget",
     "duration_3_days": "TripDuration",
     "relaxed": "TravelStyle",
@@ -223,10 +223,12 @@ async def test_configured_session_approval_turn_resumes_pending_plan() -> None:
     third = await session.handle_turn("approve it")
 
     assert first.status == "approval_required"
+    assert "Approve placing the refundable flight hold" in first.response_text
     assert first.execution_result is not None
     assert first.execution_result.approval_request is not None
     assert first.execution_result.approval_request["action"] == "reserve_flight_hold"
     assert second.status == "approval_required"
+    assert "Approve placing the refundable hotel hold" in second.response_text
     assert second.execution_result is not None
     assert second.execution_result.approval_request is not None
     assert second.execution_result.approval_request["action"] == "reserve_hotel_hold"
@@ -288,8 +290,8 @@ async def test_configured_session_denial_turn_stops_pending_plan() -> None:
 
 
 @pytest.mark.asyncio
-async def test_configured_session_correction_re_plans_and_re_runs_execution() -> None:
-    """A correction turn during an active HITL pause should cancel the pending plan and trigger a replan."""
+async def test_configured_session_change_of_mind_denies_pending_approval() -> None:
+    """A change-of-mind turn during HITL should stop before approval-gated actions."""
     package = load_travel_package()
     interpreter = SequencedInterpreter(
         [
@@ -328,9 +330,10 @@ async def test_configured_session_correction_re_plans_and_re_runs_execution() ->
 
     second = await session.handle_turn("I changed my mind, make it 5 days please")
 
-    assert second.status == "approval_required"
-    assert second.intent_frame is not None
-    assert second.intent_frame.normalized_parameters["duration_days"] == "duration_5_days"
-    assert second.intent_frame.normalized_parameters["origin"] == "boston"
-    assert second.intent_frame.normalized_parameters["destination"] == "tokyo"
-
+    assert second.status == "approval_denied"
+    assert "What would you like to change" in second.response_text
+    assert second.execution_result is not None
+    assert not any(
+        "Placed refundable" in str(result)
+        for result in second.execution_result.execution
+    )

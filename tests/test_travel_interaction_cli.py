@@ -32,6 +32,8 @@ async def test_scripted_travel_interaction_approval_writes_transcript(tmp_path) 
         "success",
     ]
     assert "Pacific Arc 221" in turns[2]["assistant"]
+    assert "Approve placing the refundable flight hold" in turns[2]["assistant"]
+    assert "Approve placing the refundable hotel hold" in turns[3]["assistant"]
     assert turns[2]["approval_request"]["action"] == "reserve_flight_hold"
     assert turns[3]["approval_request"]["action"] == "reserve_hotel_hold"
     assert any(
@@ -87,7 +89,7 @@ def test_travel_demo_interpreter_extracts_dense_two_turn_request() -> None:
     assert second == {
         "destination": "tokyo",
         "duration_days": 3,
-        "travel_window": "next_week",
+        "travel_window": 7,
         "style": "relaxed",
         "origin": "boston",
         "budget": 2000,
@@ -115,9 +117,7 @@ async def test_dense_two_turn_request_reaches_approval() -> None:
     assert "Where are you going?" not in turns[0]["assistant"]
     assert "What budget should I stay within?" not in turns[0]["assistant"]
     assert turns[1]["intent_frame"]["normalized_parameters"]["budget"] == "budget_2000"
-    assert turns[1]["intent_frame"]["normalized_parameters"]["travel_window"] == (
-        "next_week"
-    )
+    assert turns[1]["intent_frame"]["normalized_parameters"]["travel_window"] == "in_7_days"
 
 
 @pytest.mark.asyncio

@@ -61,8 +61,16 @@ class IntentFrameBuilder:
 
             # Apply normalization aliases if provided
             val_str = str(raw_val).strip().lower()
+            matched_alias = None
             if val_str in slot_spec.normalization_aliases:
-                raw_val = slot_spec.normalization_aliases[val_str]
+                matched_alias = slot_spec.normalization_aliases[val_str]
+            else:
+                for alias_key, alias_val in slot_spec.normalization_aliases.items():
+                    if alias_key in val_str:
+                        matched_alias = alias_val
+                        break
+            if matched_alias:
+                raw_val = matched_alias
                 slots[slot_name] = raw_val
 
             norm_val = self._normalize_slot_value(slot_name, raw_val, spec)

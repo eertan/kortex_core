@@ -57,7 +57,7 @@ def test_intent_frame_builder_normalizes_slots_and_preferences() -> None:
         "origin": "boston",
         "destination": "tokyo",
         "duration_days": "duration_3_days",
-        "travel_window": "next_month",
+        "travel_window": "in_30_days",
         "budget": "budget_2500",
         "style": "relaxed",
     }
@@ -113,7 +113,7 @@ def test_intent_frame_builder_canonicalizes_object_like_strings() -> None:
         "origin": "boston",
         "destination": "tokyo",
         "duration_days": "duration_3_days",
-        "travel_window": "next_week",
+        "travel_window": "in_7_days",
         "budget": "budget_2000",
         "style": "relaxed",
     }
@@ -175,4 +175,3 @@ def test_intent_frame_builder_uses_normalization_aliases() -> None:
 
     assert isinstance(result, IntentFrame)
     assert result.normalized_parameters["destination"] == "tokyo"
-
